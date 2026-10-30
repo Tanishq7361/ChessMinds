@@ -9,10 +9,11 @@ uint64_t SIDE_KEY = 0;
 
 namespace {
 
+// Deterministic PRNG seed for reproducible hash keys across runs and platforms
 uint64_t prng_state = 1070372ULL;
 
+/// @brief Generates high-entropy 64-bit random numbers using 64-bit xorshift*.
 uint64_t random_u64() noexcept {
-    // 64-bit xorshift*
     prng_state ^= prng_state >> 12;
     prng_state ^= prng_state << 25;
     prng_state ^= prng_state >> 27;
@@ -23,6 +24,7 @@ bool initialized = false;
 
 } // namespace
 
+/// @brief Fills the Zobrist key arrays with deterministic pseudo-random 64-bit bitmasks.
 void init() {
     if (initialized) return;
     prng_state = 1070372ULL;
@@ -48,4 +50,3 @@ void init() {
 }
 
 } // namespace chessmind::zobrist
-

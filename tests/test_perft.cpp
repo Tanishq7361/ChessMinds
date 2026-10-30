@@ -5,6 +5,7 @@
 
 using namespace chessmind;
 
+/// @brief Recursively counts leaf nodes to depth `depth` to verify move generator correctness.
 uint64_t perft(Board& board, int depth) {
     if (depth == 0) return 1ULL;
     std::vector<Move> moves;
@@ -20,9 +21,11 @@ uint64_t perft(Board& board, int depth) {
     return nodes;
 }
 
+/// @brief Runs standard Perft benchmark suites on starting position and KiwiPete position.
 int main() {
     Board board;
 
+    // 1. Starting position benchmark
     std::cout << "[TEST] Running Perft tests on starting position..." << std::endl;
     board.reset();
 
@@ -49,8 +52,8 @@ int main() {
         }
     }
 
+    // 2. KiwiPete position benchmark (tests tricky en passant, castling, promotion, and check states)
     std::cout << "[TEST] Running Perft tests on KiwiPete position..." << std::endl;
-    // KiwiPete: tests en passant, castling, promotions, pinned pieces
     bool ok = board.set_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
     if (!ok) {
         std::cerr << "Failed to set KiwiPete FEN\n";
@@ -82,4 +85,3 @@ int main() {
     std::cout << "All Perft tests PASSED successfully!\n";
     return 0;
 }
-

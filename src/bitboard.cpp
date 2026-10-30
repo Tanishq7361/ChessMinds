@@ -5,17 +5,19 @@ namespace chessmind::bitboards {
 
 namespace {
 
+// Lookup tables for non-sliding piece attacks
 std::array<std::array<Bitboard, 64>, 2> PAWN_ATTACK_TABLE{};
 std::array<Bitboard, 64> KNIGHT_ATTACK_TABLE{};
 std::array<Bitboard, 64> KING_ATTACK_TABLE{};
 bool initialized = false;
 
+/// @brief Precomputes pawn capture attack rays for both White and Black on all 64 squares.
 void init_pawn_attacks() {
     for (int sq = 0; sq < 64; ++sq) {
         int f = square_file(static_cast<Square>(sq));
         int r = square_rank(static_cast<Square>(sq));
 
-        // White pawns attack r + 1
+        // White pawns attack diagonally upward (r + 1)
         Bitboard w_att = 0;
         if (r < 7) {
             if (f > 0) w_att |= square_bb(make_square(f - 1, r + 1));
@@ -23,7 +25,7 @@ void init_pawn_attacks() {
         }
         PAWN_ATTACK_TABLE[WHITE][sq] = w_att;
 
-        // Black pawns attack r - 1
+        // Black pawns attack diagonally downward (r - 1)
         Bitboard b_att = 0;
         if (r > 0) {
             if (f > 0) b_att |= square_bb(make_square(f - 1, r - 1));
@@ -33,6 +35,7 @@ void init_pawn_attacks() {
     }
 }
 
+/// @brief Precomputes knight leaping attacks for all 8 possible L-shaped jumps.
 void init_knight_attacks() {
     constexpr int offsets[8][2] = {
         {1, 2}, {2, 1}, {2, -1}, {1, -2},
@@ -55,6 +58,7 @@ void init_knight_attacks() {
     }
 }
 
+/// @brief Precomputes king attacks for all 8 adjacent squares.
 void init_king_attacks() {
     constexpr int offsets[8][2] = {
         {0, 1}, {1, 1}, {1, 0}, {1, -1},
@@ -79,6 +83,7 @@ void init_king_attacks() {
 
 } // namespace
 
+/// @brief Global initializer ensuring lookup tables are populated once.
 void init() {
     if (initialized) return;
     init_pawn_attacks();
@@ -99,6 +104,7 @@ Bitboard king_attacks(Square sq) noexcept {
     return KING_ATTACK_TABLE[sq];
 }
 
+/// @brief Ray-casts along 4 diagonal directions until the board edge or an occupied square is encountered.
 Bitboard bishop_attacks(Square sq, Bitboard occ) noexcept {
     int f = square_file(sq);
     int r = square_rank(sq);
@@ -112,7 +118,7 @@ Bitboard bishop_attacks(Square sq, Bitboard occ) noexcept {
             Square target = make_square(cf, cr);
             Bitboard bit = square_bb(target);
             att |= bit;
-            if (occ & bit) break;
+            if (occ & bit) break; // Ray is blocked by an intervening piece
             cf += df;
             cr += dr;
         }
@@ -120,6 +126,7 @@ Bitboard bishop_attacks(Square sq, Bitboard occ) noexcept {
     return att;
 }
 
+/// @brief Ray-casts along 4 orthogonal directions (horizontal and vertical) until blocked.
 Bitboard rook_attacks(Square sq, Bitboard occ) noexcept {
     int f = square_file(sq);
     int r = square_rank(sq);
@@ -133,7 +140,7 @@ Bitboard rook_attacks(Square sq, Bitboard occ) noexcept {
             Square target = make_square(cf, cr);
             Bitboard bit = square_bb(target);
             att |= bit;
-            if (occ & bit) break;
+            if (occ & bit) break; // Ray is blocked by an intervening piece
             cf += df;
             cr += dr;
         }
@@ -141,9 +148,9 @@ Bitboard rook_attacks(Square sq, Bitboard occ) noexcept {
     return att;
 }
 
+/// @brief Queen attacks are the mathematical union of diagonal and orthogonal rays.
 Bitboard queen_attacks(Square sq, Bitboard occ) noexcept {
     return bishop_attacks(sq, occ) | rook_attacks(sq, occ);
 }
 
 } // namespace chessmind::bitboards
-

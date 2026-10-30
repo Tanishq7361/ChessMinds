@@ -7,9 +7,12 @@
 
 namespace chessmind {
 
+/// @brief Universal Chess Interface (UCI) protocol handler for communication with GUIs and bot bridges.
 class Uci {
 public:
     Uci();
+
+    /// @brief Main input reading loop parsing standard UCI commands from stdin until "quit".
     void loop();
 
 private:
@@ -25,4 +28,3 @@ private:
 };
 
 } // namespace chessmind
-

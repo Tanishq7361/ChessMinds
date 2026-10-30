@@ -5,15 +5,19 @@ namespace chessmind {
 
 namespace {
 
-// Piece values in centipawns
-constexpr int MG_PIECE_VALUES[6] = { 100, 320, 330, 500, 900, 0 };
-constexpr int EG_PIECE_VALUES[6] = { 100, 290, 330, 520, 950, 0 };
+// Piece values in centipawns (100 cp = 1 pawn)
+constexpr int MG_PIECE_VALUES[6] = { 100, 320, 330, 500, 900, 0 }; // Middlegame
+constexpr int EG_PIECE_VALUES[6] = { 100, 290, 330, 520, 950, 0 }; // Endgame
 
+// Weights used to determine the phase of the game (0 = pure endgame, 24 = opening/middlegame)
 constexpr int GAME_PHASE_WEIGHTS[6] = { 0, 1, 1, 2, 4, 0 };
 constexpr int TOTAL_PHASE = 24;
 
-// Standard PeSTO / simplified evaluation Piece-Square Tables (White perspective, square 0 = a1, 63 = h8)
-// Pawns
+// -----------------------------------------------------------------
+// Piece-Square Tables (PST) in centipawns (White perspective, A1=0, H8=63)
+// -----------------------------------------------------------------
+
+// Pawns: encourage central occupation in MG, advancing/queening in EG
 constexpr int MG_PAWN_TABLE[64] = {
       0,   0,   0,   0,   0,   0,   0,   0,
      98, 134,  61,  95,  68, 126,  34, -11,
@@ -36,7 +40,7 @@ constexpr int EG_PAWN_TABLE[64] = {
       0,   0,   0,   0,   0,   0,   0,   0
 };
 
-// Knights
+// Knights: reward central placement, penalize rim squares
 constexpr int MG_KNIGHT_TABLE[64] = {
     -167, -89, -34, -49,  61, -97, -15, -107,
      -73, -41,  72,  36,  23,  62,   7,  -17,
@@ -59,7 +63,7 @@ constexpr int EG_KNIGHT_TABLE[64] = {
     -29, -51, -23, -15, -22, -18, -50, -64
 };
 
-// Bishops
+// Bishops: reward long diagonals and center control
 constexpr int MG_BISHOP_TABLE[64] = {
     -29,   4, -82, -37, -25, -42,   7,  -8,
     -26,  16, -18, -13,  30,  59,  18, -47,
@@ -82,7 +86,7 @@ constexpr int EG_BISHOP_TABLE[64] = {
     -23,  -9, -23,  -5,  -9, -16,  -5, -17
 };
 
-// Rooks
+// Rooks: reward 7th rank and open files
 constexpr int MG_ROOK_TABLE[64] = {
      32,  42,  32,  51,  63,   9,  31,  43,
      27,  32,  58,  62,  80,  67,  26,  44,
@@ -105,7 +109,7 @@ constexpr int EG_ROOK_TABLE[64] = {
      -9,   2,   3,  -1,  -5, -13,   4, -20
 };
 
-// Queens
+// Queens: centralized active piece in middlegame
 constexpr int MG_QUEEN_TABLE[64] = {
     -28,   0,  29,  12,  59,  44,  43,  45,
     -24, -39,  -5,   1, -16,  57,  28,  54,
@@ -128,7 +132,7 @@ constexpr int EG_QUEEN_TABLE[64] = {
     -33, -28, -22, -43,  -5, -32, -20, -41
 };
 
-// Kings
+// Kings: shelter and safety in MG (castled corners), central active participation in EG
 constexpr int MG_KING_TABLE[64] = {
     -65,  23,  16, -15, -56, -34,   2,  13,
      29,  -1, -20,  -7,  -8,  -4, -38, -29,
@@ -151,13 +155,16 @@ constexpr int EG_KING_TABLE[64] = {
     -53, -34, -21, -11, -28, -14, -24, -43
 };
 
+/// @brief Mirrors a square vertically for Black's perspective across the center (rank 1 <-> rank 8).
 [[nodiscard]] constexpr int mirror_sq(Square sq) noexcept {
     return sq ^ 56;
 }
 
 } // namespace
 
+/// @brief Evaluates static board quality in centipawns. Positive indicates advantage for side_to_move.
 int Evaluator::evaluate(const Board& board) noexcept {
+    // Immediate draws score 0
     if (board.is_fifty_move_rule() || board.is_draw_by_repetition(2) || board.is_insufficient_material()) {
         return DRAW_SCORE;
     }
@@ -166,10 +173,10 @@ int Evaluator::evaluate(const Board& board) noexcept {
     int eg_score = 0;
     int game_phase = 0;
 
-    // Piece evaluation tables mapping
     const int* mg_tables[6] = { MG_PAWN_TABLE, MG_KNIGHT_TABLE, MG_BISHOP_TABLE, MG_ROOK_TABLE, MG_QUEEN_TABLE, MG_KING_TABLE };
     const int* eg_tables[6] = { EG_PAWN_TABLE, EG_KNIGHT_TABLE, EG_BISHOP_TABLE, EG_ROOK_TABLE, EG_QUEEN_TABLE, EG_KING_TABLE };
 
+    // 1. Material and Piece-Square Table evaluation for both colors
     for (int pt = PAWN; pt <= KING; ++pt) {
         // White pieces
         Bitboard w_bb = board.piece_bb(WHITE, static_cast<PieceType>(pt));
@@ -180,7 +187,7 @@ int Evaluator::evaluate(const Board& board) noexcept {
             game_phase += GAME_PHASE_WEIGHTS[pt];
         }
 
-        // Black pieces
+        // Black pieces (using vertically mirrored square for symmetrical piece placement evaluation)
         Bitboard b_bb = board.piece_bb(BLACK, static_cast<PieceType>(pt));
         while (b_bb) {
             Square sq = pop_lsb(b_bb);
@@ -191,7 +198,7 @@ int Evaluator::evaluate(const Board& board) noexcept {
         }
     }
 
-    // Bishop pair bonus (+30 cp)
+    // 2. Bishop Pair Bonus (+30 cp for having both light and dark squared bishops)
     if (pop_count(board.piece_bb(WHITE, BISHOP)) >= 2) {
         mg_score += 30;
         eg_score += 30;
@@ -201,7 +208,7 @@ int Evaluator::evaluate(const Board& board) noexcept {
         eg_score -= 30;
     }
 
-    // Pawn structure evaluation
+    // 3. Pawn Structure Evaluation
     Bitboard w_pawns = board.piece_bb(WHITE, PAWN);
     Bitboard b_pawns = board.piece_bb(BLACK, PAWN);
 
@@ -211,7 +218,7 @@ int Evaluator::evaluate(const Board& board) noexcept {
         if (f > 0) adj_mask |= (bitboards::FILE_A << (f - 1));
         if (f < 7) adj_mask |= (bitboards::FILE_A << (f + 1));
 
-        // Doubled pawns (-15 cp)
+        // Doubled pawns penalty (-15 cp per stacked pawn on same file)
         int w_in_file = pop_count(w_pawns & file_mask);
         if (w_in_file > 1) {
             mg_score -= 15 * (w_in_file - 1);
@@ -223,7 +230,7 @@ int Evaluator::evaluate(const Board& board) noexcept {
             eg_score += 15 * (b_in_file - 1);
         }
 
-        // Isolated pawns (-15 cp)
+        // Isolated pawns penalty (-15 cp if no friendly pawns on adjacent files)
         if (w_in_file > 0 && !(w_pawns & adj_mask)) {
             mg_score -= 15;
             eg_score -= 15;
@@ -234,7 +241,7 @@ int Evaluator::evaluate(const Board& board) noexcept {
         }
     }
 
-    // Passed pawns bonus (+20 to +80 cp scaling with rank)
+    // Passed pawns bonus (+15 to +85 cp scaling with advance toward promotion)
     Bitboard wp = w_pawns;
     while (wp) {
         Square sq = pop_lsb(wp);
@@ -248,6 +255,7 @@ int Evaluator::evaluate(const Board& board) noexcept {
         if (f > 0) files_ahead |= (bitboards::FILE_A << (f - 1));
         if (f < 7) files_ahead |= (bitboards::FILE_A << (f + 1));
 
+        // If no opposing pawns in front or on adjacent files, pawn is passed
         if (!(b_pawns & (front_span & files_ahead))) {
             int bonus = 15 + r * 10;
             mg_score += bonus;
@@ -275,12 +283,12 @@ int Evaluator::evaluate(const Board& board) noexcept {
         }
     }
 
-    // Tapered evaluation blending MG and EG
+    // 4. Tapered Evaluation: Blend Middlegame and Endgame scores based on game phase
     int phase = std::clamp(game_phase, 0, TOTAL_PHASE);
     int eval = (mg_score * phase + eg_score * (TOTAL_PHASE - phase)) / TOTAL_PHASE;
 
+    // Negamax convention: return score relative to the current player
     return (board.side_to_move() == WHITE) ? eval : -eval;
 }
 
 } // namespace chessmind
-

@@ -10,22 +10,26 @@ Uci::Uci() : tt_(16), searcher_(tt_) {
     board_.reset();
 }
 
+/// @brief Handles the 'uci' command: identifies engine and responds with 'uciok'.
 void Uci::handle_uci() {
     std::cout << "id name ChessMinds\n"
               << "id author Tanishq Shah\n"
               << "uciok\n" << std::flush;
 }
 
+/// @brief Handles the 'isready' command: responds with 'readyok' to confirm initialization.
 void Uci::handle_isready() {
     std::cout << "readyok\n" << std::flush;
 }
 
+/// @brief Handles 'ucinewgame': resets board, history, and clears the transposition table.
 void Uci::handle_ucinewgame() {
     tt_.clear();
     searcher_.reset();
     board_.reset();
 }
 
+/// @brief Handles the 'position' command: parses 'startpos' or 'fen', followed by optional move list.
 void Uci::handle_position(const std::string& line) {
     std::istringstream iss(line);
     std::string token;
@@ -35,10 +39,10 @@ void Uci::handle_position(const std::string& line) {
 
     if (token == "startpos") {
         board_.reset();
-        iss >> token; // might be "moves" or EOF
+        iss >> token; // checks for "moves" or EOF
     } else if (token == "fen") {
         std::string fen;
-        // FEN has 6 fields: pieces, color, castling, ep, halfmove, fullmove
+        // Read 6 standard FEN fields
         for (int i = 0; i < 6 && (iss >> token); ++i) {
             if (token == "moves") break;
             if (!fen.empty()) fen += " ";
@@ -46,10 +50,11 @@ void Uci::handle_position(const std::string& line) {
         }
         board_.set_fen(fen);
         if (token != "moves") {
-            iss >> token; // might be "moves"
+            iss >> token; // checks for "moves"
         }
     }
 
+    // Apply subsequent moves
     if (token == "moves") {
         std::string move_str;
         while (iss >> move_str) {
@@ -64,13 +69,13 @@ void Uci::handle_position(const std::string& line) {
                 }
             }
             if (!played) {
-                // If move failed to match, break out cleanly
                 break;
             }
         }
     }
 }
 
+/// @brief Handles the 'go' command: parses search bounds (time, increment, depth) and outputs 'bestmove'.
 void Uci::handle_go(const std::string& line) {
     std::istringstream iss(line);
     std::string token;
@@ -100,6 +105,7 @@ void Uci::handle_go(const std::string& line) {
     std::cout << "bestmove " << best_move.to_uci() << "\n" << std::flush;
 }
 
+/// @brief Continuously reads commands from stdin and dispatches to appropriate handlers.
 void Uci::loop() {
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -128,4 +134,3 @@ void Uci::loop() {
 }
 
 } // namespace chessmind
-

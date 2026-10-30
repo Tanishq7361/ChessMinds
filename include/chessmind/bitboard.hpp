@@ -5,18 +5,22 @@
 
 namespace chessmind {
 
+/// @brief Generates a 64-bit mask with only the bit for `sq` set.
 [[nodiscard]] constexpr Bitboard square_bb(Square sq) noexcept {
     return 1ULL << sq;
 }
 
+/// @brief Counts the number of set bits (population count) in a bitboard.
 [[nodiscard]] constexpr int pop_count(Bitboard bb) noexcept {
     return std::popcount(bb);
 }
 
+/// @brief Returns the index of the least significant set bit (LSB).
 [[nodiscard]] constexpr Square lsb(Bitboard bb) noexcept {
     return static_cast<Square>(std::countr_zero(bb));
 }
 
+/// @brief Extracts and clears the least significant set bit from `bb`, returning its Square index.
 inline Square pop_lsb(Bitboard& bb) noexcept {
     Square sq = lsb(bb);
     bb &= bb - 1;
@@ -25,16 +29,28 @@ inline Square pop_lsb(Bitboard& bb) noexcept {
 
 namespace bitboards {
 
+/// @brief Initializes precomputed attack lookup tables for leaping pieces (pawns, knights, kings).
 void init();
 
+/// @brief Returns precomputed pawn attack bitboard from square `sq` for color `c`.
 [[nodiscard]] Bitboard pawn_attacks(Color c, Square sq) noexcept;
+
+/// @brief Returns precomputed knight attack bitboard from square `sq`.
 [[nodiscard]] Bitboard knight_attacks(Square sq) noexcept;
+
+/// @brief Returns precomputed king attack bitboard from square `sq`.
 [[nodiscard]] Bitboard king_attacks(Square sq) noexcept;
+
+/// @brief Computes bishop attack bitboard from square `sq` blocked by pieces in `occ`.
 [[nodiscard]] Bitboard bishop_attacks(Square sq, Bitboard occ) noexcept;
+
+/// @brief Computes rook attack bitboard from square `sq` blocked by pieces in `occ`.
 [[nodiscard]] Bitboard rook_attacks(Square sq, Bitboard occ) noexcept;
+
+/// @brief Computes queen attack bitboard (union of bishop and rook rays) from square `sq` blocked by `occ`.
 [[nodiscard]] Bitboard queen_attacks(Square sq, Bitboard occ) noexcept;
 
-// File and Rank masks
+// File bit masks
 constexpr Bitboard FILE_A = 0x0101010101010101ULL;
 constexpr Bitboard FILE_B = FILE_A << 1;
 constexpr Bitboard FILE_C = FILE_A << 2;
@@ -44,6 +60,7 @@ constexpr Bitboard FILE_F = FILE_A << 5;
 constexpr Bitboard FILE_G = FILE_A << 6;
 constexpr Bitboard FILE_H = FILE_A << 7;
 
+// Rank bit masks
 constexpr Bitboard RANK_1 = 0x00000000000000FFULL;
 constexpr Bitboard RANK_2 = RANK_1 << 8;
 constexpr Bitboard RANK_3 = RANK_1 << 16;
@@ -55,4 +72,3 @@ constexpr Bitboard RANK_8 = RANK_1 << 56;
 
 } // namespace bitboards
 } // namespace chessmind
-

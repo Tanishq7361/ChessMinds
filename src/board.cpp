@@ -7,15 +7,16 @@ namespace chessmind {
 
 namespace {
 
+/// @brief Precomputed mask to quickly revoke castling rights when a king or rook moves or is captured.
 constexpr std::array<uint8_t, 64> CASTLE_MASK = []{
     std::array<uint8_t, 64> m{};
     m.fill(0xF);
-    m[SQ_A1] &= ~WHITE_OOO;
-    m[SQ_H1] &= ~WHITE_OO;
-    m[SQ_E1] &= ~(WHITE_OO | WHITE_OOO);
-    m[SQ_A8] &= ~BLACK_OOO;
-    m[SQ_H8] &= ~BLACK_OO;
-    m[SQ_E8] &= ~(BLACK_OO | BLACK_OOO);
+    m[SQ_A1] &= ~WHITE_OOO;              // White queen rook moved/captured
+    m[SQ_H1] &= ~WHITE_OO;               // White king rook moved/captured
+    m[SQ_E1] &= ~(WHITE_OO | WHITE_OOO); // White king moved
+    m[SQ_A8] &= ~BLACK_OOO;              // Black queen rook moved/captured
+    m[SQ_H8] &= ~BLACK_OO;               // Black king rook moved/captured
+    m[SQ_E8] &= ~(BLACK_OO | BLACK_OOO); // Black king moved
     return m;
 }();
 
@@ -27,6 +28,7 @@ Board::Board() {
     reset();
 }
 
+/// @brief Clears all piece placements, occupancies, and game metadata.
 void Board::clear() {
     for (int c = 0; c < 2; ++c) {
         for (int pt = 0; pt < 6; ++pt) {
@@ -48,6 +50,7 @@ void Board::clear() {
     repetition_history_.clear();
 }
 
+/// @brief Places a piece on a square and updates the bitboard structures.
 void Board::put_piece(Square sq, Piece p) {
     if (sq >= 64 || p == EMPTY) return;
     Color c = color_of(p);
@@ -60,6 +63,7 @@ void Board::put_piece(Square sq, Piece p) {
     board_[sq] = p;
 }
 
+/// @brief Removes a piece from a square and clears its corresponding bitboard bits.
 void Board::remove_piece(Square sq) {
     if (sq >= 64) return;
     Piece p = board_[sq];
@@ -78,6 +82,7 @@ void Board::reset() {
     set_fen(START_FEN);
 }
 
+/// @brief Parses a standard 6-field FEN string into the board state.
 bool Board::set_fen(std::string_view fen) {
     clear();
     std::istringstream iss{std::string(fen)};
@@ -89,6 +94,7 @@ bool Board::set_fen(std::string_view fen) {
     }
     iss >> halfmove >> fullmove;
 
+    // 1. Piece placement
     int r = 7;
     int f = 0;
     for (char ch : piece_placement) {
@@ -121,8 +127,10 @@ bool Board::set_fen(std::string_view fen) {
         }
     }
 
+    // 2. Active color
     side_to_move_ = (active_color == "b") ? BLACK : WHITE;
 
+    // 3. Castling availability
     castling_rights_ = NO_CASTLING;
     for (char ch : castling) {
         switch (ch) {
@@ -134,6 +142,7 @@ bool Board::set_fen(std::string_view fen) {
         }
     }
 
+    // 4. En passant target square
     if (ep_str != "-" && ep_str.length() == 2) {
         int ep_file = ep_str[0] - 'a';
         int ep_rank = ep_str[1] - '1';
@@ -142,6 +151,7 @@ bool Board::set_fen(std::string_view fen) {
         }
     }
 
+    // 5. Halfmove clock & fullmove number
     halfmove_clock_ = halfmove;
     fullmove_number_ = (fullmove > 0) ? fullmove : 1;
     zobrist_hash_ = compute_zobrist();
@@ -150,6 +160,7 @@ bool Board::set_fen(std::string_view fen) {
     return true;
 }
 
+/// @brief Generates a standard FEN representation of the current board state.
 std::string Board::to_fen() const {
     std::string fen;
     for (int r = 7; r >= 0; --r) {
@@ -196,6 +207,7 @@ std::string Board::to_fen() const {
     return fen;
 }
 
+/// @brief Calculates the full 64-bit Zobrist key by combining piece, castling, ep, and side keys.
 uint64_t Board::compute_zobrist() const noexcept {
     uint64_t hash = 0;
     for (int sq = 0; sq < 64; ++sq) {
@@ -219,22 +231,23 @@ Square Board::king_square(Color c) const noexcept {
     return k ? lsb(k) : SQ_NONE;
 }
 
+/// @brief Checks whether `sq` is attacked by any enemy piece by casting inverse attack rays.
 bool Board::is_square_attacked(Square sq, Color attacker_color) const noexcept {
-    // Pawns
+    // 1. Pawn attacks
     Bitboard pawn_att = bitboards::pawn_attacks(~attacker_color, sq);
     if (pawn_att & pieces_[attacker_color][PAWN]) return true;
 
-    // Knights
+    // 2. Knight attacks
     if (bitboards::knight_attacks(sq) & pieces_[attacker_color][KNIGHT]) return true;
 
-    // Kings
+    // 3. King attacks
     if (bitboards::king_attacks(sq) & pieces_[attacker_color][KING]) return true;
 
-    // Bishops & Queens
+    // 4. Diagonal sliders (Bishops and Queens)
     Bitboard bq = pieces_[attacker_color][BISHOP] | pieces_[attacker_color][QUEEN];
     if (bq && (bitboards::bishop_attacks(sq, all_occ_) & bq)) return true;
 
-    // Rooks & Queens
+    // 5. Orthogonal sliders (Rooks and Queens)
     Bitboard rq = pieces_[attacker_color][ROOK] | pieces_[attacker_color][QUEEN];
     if (rq && (bitboards::rook_attacks(sq, all_occ_) & rq)) return true;
 
@@ -250,6 +263,7 @@ bool Board::in_check() const noexcept {
     return in_check(side_to_move_);
 }
 
+/// @brief Applies a move to the board and saves the previous state for undo_move.
 void Board::make_move(const Move& m) {
     StateRecord state;
     state.move = m;
@@ -264,7 +278,7 @@ void Board::make_move(const Move& m) {
     Color them = ~us;
     PieceType pt = type_of(moving_piece);
 
-    // Save captured piece
+    // Handle piece captures (including en passant)
     if (m.is_en_passant()) {
         Square cap_sq = make_square(square_file(m.to), square_rank(m.from));
         state.captured = board_[cap_sq];
@@ -279,7 +293,7 @@ void Board::make_move(const Move& m) {
     // Move piece from origin
     remove_piece(m.from);
 
-    // Castling rook move
+    // Relocate rook if castling
     if (m.is_castling()) {
         if (m.to == SQ_G1) {
             remove_piece(SQ_H1);
@@ -296,32 +310,32 @@ void Board::make_move(const Move& m) {
         }
     }
 
-    // Placement on destination (handling promotion)
+    // Place piece at destination (promote if applicable)
     if (m.is_promotion()) {
         put_piece(m.to, make_piece(us, m.promo));
     } else {
         put_piece(m.to, moving_piece);
     }
 
-    // Update halfmove clock (reset on pawn moves or captures)
+    // Reset halfmove clock on pawn moves or captures (50-move rule counter)
     if (pt == PAWN || state.captured != EMPTY) {
         halfmove_clock_ = 0;
     } else {
         ++halfmove_clock_;
     }
 
-    // Update castling rights
+    // Update castling rights if king or rook moved or was captured
     castling_rights_ &= CASTLE_MASK[m.from];
     castling_rights_ &= CASTLE_MASK[m.to];
 
-    // Update en passant square
+    // Set new en passant target square if a pawn pushed two squares
     if ((m.flags & FLAG_DOUBLE_PUSH) != 0) {
         ep_square_ = (us == WHITE) ? static_cast<Square>(m.from + 8) : static_cast<Square>(m.from - 8);
     } else {
         ep_square_ = SQ_NONE;
     }
 
-    // Advance turn
+    // Advance turn and fullmove counter
     if (us == BLACK) {
         ++fullmove_number_;
     }
@@ -332,6 +346,7 @@ void Board::make_move(const Move& m) {
     repetition_history_.push_back(zobrist_hash_);
 }
 
+/// @brief Reverts the most recent move and restores the saved state.
 void Board::undo_move() {
     if (history_.empty()) return;
 
@@ -340,13 +355,13 @@ void Board::undo_move() {
     repetition_history_.pop_back();
 
     Move m = state.move;
-    Color them = side_to_move_; // enemy
-    Color us = ~them;           // side that played move m
+    Color them = side_to_move_; // Current turn
+    Color us = ~them;           // Player whose move is being undone
 
-    // Revert piece on destination square
+    // Remove piece from destination square
     remove_piece(m.to);
 
-    // Put moving piece back on origin square
+    // Restore moved piece back to origin square
     put_piece(m.from, state.moved);
 
     // Restore captured piece if any
@@ -359,7 +374,7 @@ void Board::undo_move() {
         }
     }
 
-    // Revert castling rook move
+    // Restore castling rook to initial corner
     if (m.is_castling()) {
         if (m.to == SQ_G1) {
             remove_piece(SQ_F1);
@@ -376,7 +391,7 @@ void Board::undo_move() {
         }
     }
 
-    // Restore board state variables
+    // Revert state variables
     castling_rights_ = state.castling_rights;
     ep_square_ = state.ep_square;
     halfmove_clock_ = state.halfmove_clock;
@@ -388,11 +403,13 @@ void Board::undo_move() {
     side_to_move_ = us;
 }
 
+/// @brief Checks if the current Zobrist key has appeared `count` times within the reversible halfmove window.
 bool Board::is_draw_by_repetition(int count) const noexcept {
     int occurrences = 0;
     int limit = static_cast<int>(repetition_history_.size()) - 1;
     int max_steps = std::min(halfmove_clock_, limit);
 
+    // Positions can only match on the same player's turn (step of 2)
     for (int i = 0; i <= max_steps; i += 2) {
         if (repetition_history_[limit - i] == zobrist_hash_) {
             ++occurrences;
@@ -406,6 +423,7 @@ bool Board::is_fifty_move_rule() const noexcept {
     return halfmove_clock_ >= 100;
 }
 
+/// @brief Evaluates whether insufficient material remains on board to force checkmate.
 bool Board::is_insufficient_material() const noexcept {
     if (pieces_[WHITE][PAWN] || pieces_[BLACK][PAWN] ||
         pieces_[WHITE][ROOK] || pieces_[BLACK][ROOK] ||
@@ -421,11 +439,11 @@ bool Board::is_insufficient_material() const noexcept {
     int w_minors = w_knights + w_bishops;
     int b_minors = b_knights + b_bishops;
 
-    if (w_minors == 0 && b_minors == 0) return true; // K vs K
-    if (w_minors == 1 && b_minors == 0) return true; // KB vs K or KN vs K
-    if (w_minors == 0 && b_minors == 1) return true; // K vs KB or K vs KN
+    if (w_minors == 0 && b_minors == 0) return true; // King vs King
+    if (w_minors == 1 && b_minors == 0) return true; // King + Minor vs King
+    if (w_minors == 0 && b_minors == 1) return true; // King vs King + Minor
 
-    // KB vs KB with same-colored bishops
+    // King + Bishop vs King + Bishop with both bishops on the same color squares
     if (w_minors == 1 && b_minors == 1 && w_bishops == 1 && b_bishops == 1) {
         Square w_bsq = lsb(pieces_[WHITE][BISHOP]);
         Square b_bsq = lsb(pieces_[BLACK][BISHOP]);

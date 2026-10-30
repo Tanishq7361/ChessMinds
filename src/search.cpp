@@ -8,6 +8,8 @@ namespace chessmind {
 
 namespace {
 
+// MVV-LVA (Most Valuable Victim - Least Valuable Attacker) piece value array
+// P=100, N=320, B=330, R=500, Q=900, K=10000
 constexpr int MVV_LVA_VALUES[6] = { 100, 320, 330, 500, 900, 10000 };
 
 } // namespace
@@ -34,6 +36,7 @@ void Searcher::stop() {
     stop_flag_ = true;
 }
 
+/// @brief Aborts search if wall clock time exceeds the allocated budget.
 void Searcher::check_time_limit() {
     if (stop_flag_) return;
     if (std::chrono::steady_clock::now() >= stop_time_) {
@@ -41,6 +44,11 @@ void Searcher::check_time_limit() {
     }
 }
 
+/// @brief Assigns a heuristic score to each move for ordering:
+/// 1. Hash move from Transposition Table (highest priority: 1,000,000)
+/// 2. Good captures using MVV-LVA (100,000 + victim*10 - attacker)
+/// 3. Killer moves (quiet moves that recently produced beta cutoffs: 50,000 / 40,000)
+/// 4. History heuristic (quiet moves with historical cutoff success)
 int Searcher::score_move(const Board& board, const Move& m, Move tt_move, int ply) const noexcept {
     if (m == tt_move) return 1'000'000;
 
@@ -62,6 +70,7 @@ int Searcher::score_move(const Board& board, const Move& m, Move tt_move, int pl
     return history_[c][m.from][m.to];
 }
 
+/// @brief Sorts moves in descending order of their heuristic score to maximize alpha-beta pruning cutoffs.
 void Searcher::order_moves(const Board& board, std::vector<Move>& moves, Move tt_move, int ply) {
     std::vector<std::pair<int, Move>> scored;
     scored.reserve(moves.size());
@@ -79,8 +88,10 @@ void Searcher::order_moves(const Board& board, std::vector<Move>& moves, Move tt
     }
 }
 
+/// @brief Quiescence search continues searching captures at leaf nodes to eliminate the horizon effect.
 int Searcher::quiescence(Board& board, int alpha, int beta, int ply) {
     ++nodes_;
+    // Check time every 2048 nodes
     if ((nodes_ & 2047) == 0) {
         check_time_limit();
     }
@@ -90,20 +101,22 @@ int Searcher::quiescence(Board& board, int alpha, int beta, int ply) {
         return Evaluator::evaluate(board);
     }
 
+    // Stand-pat score: static evaluation before making any capture
     int stand_pat = Evaluator::evaluate(board);
     if (stand_pat >= beta) {
-        return beta;
+        return beta; // Fail-high cutoff
     }
     if (stand_pat > alpha) {
         alpha = stand_pat;
     }
 
+    // Search only legal captures and promotions
     std::vector<Move> captures;
     MoveGen::generate_legal_captures(board, captures);
     order_moves(board, captures, NULL_MOVE, ply);
 
     for (const auto& m : captures) {
-        // Delta pruning
+        // Delta pruning: skip capture if even capturing a queen cannot bring score up to alpha
         if (stand_pat + 900 + 100 < alpha && !m.is_promotion()) {
             continue;
         }
@@ -125,6 +138,7 @@ int Searcher::quiescence(Board& board, int alpha, int beta, int ply) {
     return alpha;
 }
 
+/// @brief Recursive Negamax algorithm with Alpha-Beta pruning.
 int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, [[maybe_unused]] bool is_null_allowed) {
     ++nodes_;
     if ((nodes_ & 2047) == 0) {
@@ -132,6 +146,7 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, [[m
     }
     if (stop_flag_) return 0;
 
+    // Repetition and 50-move rule draw detection (at non-root plies)
     if (ply > 0) {
         if (board.is_fifty_move_rule() || board.is_draw_by_repetition(2)) {
             return Evaluator::DRAW_SCORE;
@@ -142,6 +157,7 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, [[m
     Move tt_move = NULL_MOVE;
     int tt_score = 0;
 
+    // Transposition Table probe
     if (ply > 0 && tt_.probe(board.zobrist_hash(), depth, alpha, beta, ply, tt_score, tt_move)) {
         return tt_score;
     }
@@ -149,20 +165,24 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, [[m
         tt_move = tt_.probe_move(board.zobrist_hash());
     }
 
+    // Transition to quiescence search at leaf nodes
     if (depth <= 0) {
         return quiescence(board, alpha, beta, ply);
     }
 
+    // Generate legal moves
     std::vector<Move> legal_moves;
     MoveGen::generate_legal_moves(board, legal_moves);
 
+    // Terminal position: checkmate or stalemate
     if (legal_moves.empty()) {
         if (board.in_check()) {
-            return -Evaluator::MATE_SCORE + ply; // Checkmate
+            return -Evaluator::MATE_SCORE + ply; // Faster mates scored higher
         }
-        return Evaluator::DRAW_SCORE; // Stalemate
+        return Evaluator::DRAW_SCORE;            // Stalemate
     }
 
+    // Order moves for optimal alpha-beta branch pruning
     order_moves(board, legal_moves, tt_move, ply);
 
     int best_score = -Evaluator::MATE_SCORE;
@@ -183,7 +203,7 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, [[m
         if (score > alpha) {
             alpha = score;
             if (alpha >= beta) {
-                // Beta cutoff
+                // Beta cutoff (fail-high): record killer move and history heuristic
                 if (!m.is_capture() && ply < 64) {
                     killer_moves_[ply][1] = killer_moves_[ply][0];
                     killer_moves_[ply][0] = m;
@@ -195,18 +215,20 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, [[m
         }
     }
 
+    // Store evaluation in Transposition Table
     uint8_t flag = (best_score <= orig_alpha) ? TT_UPPERBOUND : TT_EXACT;
     tt_.store(board.zobrist_hash(), depth, best_score, flag, ply, best_move);
 
     return best_score;
 }
 
+/// @brief Orchestrates iterative deepening search, allocates time, and outputs UCI info lines.
 Move Searcher::start_search(Board& board, const SearchLimits& limits) {
     reset();
     searching_ = true;
     start_time_ = std::chrono::steady_clock::now();
 
-    // Time management calculation
+    // 1. Time Management: allocate thinking budget based on clock and increment
     if (limits.movetime > 0) {
         int alloc = std::max(5, limits.movetime - 25);
         stop_time_ = start_time_ + std::chrono::milliseconds(alloc);
@@ -215,6 +237,7 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
         int inc = (board.side_to_move() == WHITE) ? limits.winc : limits.binc;
         int alloc = 0;
         if (time_left > 0) {
+            // Allocate 1/25th of remaining time plus 75% of increment
             alloc = time_left / 25 + (inc * 3) / 4;
             if (alloc > time_left - 30) {
                 alloc = std::max(5, time_left - 30);
@@ -224,7 +247,7 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
         }
         stop_time_ = start_time_ + std::chrono::milliseconds(alloc);
     } else {
-        // No time limit specified: give 100 seconds unless bounded by depth
+        // Unconstrained time: allow up to 1 hour
         stop_time_ = start_time_ + std::chrono::hours(1);
     }
 
@@ -238,6 +261,7 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
     Move best_overall_move = root_moves[0];
     int max_depth = std::min(limits.max_depth, 64);
 
+    // 2. Iterative Deepening loop (depth 1, 2, 3...)
     for (int current_depth = 1; current_depth <= max_depth; ++current_depth) {
         Move iteration_best_move = NULL_MOVE;
         int alpha = -Evaluator::MATE_SCORE;
@@ -275,7 +299,7 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time_).count();
         uint64_t nps = (elapsed_ms > 0) ? (nodes_ * 1000 / elapsed_ms) : 0;
 
-        // Print UCI info line
+        // Output UCI search status line
         std::cout << "info depth " << current_depth
                   << " score cp " << best_score
                   << " time " << elapsed_ms
@@ -284,12 +308,12 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
                   << " pv " << best_overall_move.to_uci()
                   << std::endl;
 
-        // If checkmate is found, stop early
+        // Early break if guaranteed checkmate found
         if (std::abs(best_score) >= Evaluator::MATE_SCORE - 100) {
             break;
         }
 
-        // Check if allocated time expired
+        // Break if allocated time has expired
         if (now >= stop_time_) {
             break;
         }
@@ -300,4 +324,3 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
 }
 
 } // namespace chessmind
-

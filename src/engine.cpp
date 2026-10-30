@@ -10,6 +10,7 @@ std::string_view Engine::version() const noexcept {
     return "1.0.0";
 }
 
+/// @brief Instantiates the UCI protocol handler and runs the event loop.
 void Engine::run_uci() {
     Uci uci;
     uci.loop();
