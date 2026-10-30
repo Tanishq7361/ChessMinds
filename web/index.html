@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChessMinds - C++20 Engine Interface</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-light: #334155;
+      --border: #475569;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-hover: #0284c7;
+      --accent: #22c55e;
+      --danger: #ef4444;
+      --sq-light: #e2e8f0;
+      --sq-dark: #64748b;
+      --sq-selected: #38bdf888;
+      --sq-last-move: #facc1555;
+      --sq-dest-hint: rgba(34, 197, 94, 0.4);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 1.25rem; font-weight: 700; color: var(--primary); }
+    .badge { font-size: 0.75rem; background: var(--surface-light); color: var(--text-muted); padding: 2px 8px; border-radius: 9999px; }
+
+    .main-container {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 24px;
+      padding: 24px;
+      max-width: 1300px;
+      margin: 0 auto;
+      width: 100%;
+      flex: 1;
+    }
+
+    /* Chessboard area */
+    .board-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .board-container {
+      position: relative;
+      width: 520px;
+      height: 520px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 3px solid #334155;
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(8, 1fr);
+      user-select: none;
+    }
+
+    .square {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      cursor: pointer;
+    }
+
+    .square.light { background-color: var(--sq-light); }
+    .square.dark { background-color: var(--sq-dark); }
+    .square.selected { background-color: var(--sq-selected) !important; }
+    .square.last-move { background-color: var(--sq-last-move) !important; }
+    .square.check { background-color: rgba(239, 68, 68, 0.6) !important; }
+
+    .hint-dot {
+      width: 18px;
+      height: 18px;
+      background: var(--sq-dest-hint);
+      border-radius: 50%;
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .hint-capture {
+      width: 100%;
+      height: 100%;
+      border: 5px solid var(--sq-dest-hint);
+      border-radius: 50%;
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .piece-img {
+      width: 85%;
+      height: 85%;
+      object-fit: contain;
+      pointer-events: none;
+      transition: transform 0.1s ease;
+    }
+
+    /* Rank & File coordinates */
+    .coord {
+      position: absolute;
+      font-size: 11px;
+      font-weight: 700;
+      pointer-events: none;
+    }
+    .coord-file { bottom: 2px; right: 4px; }
+    .coord-rank { top: 2px; left: 4px; }
+    .square.light .coord { color: var(--sq-dark); }
+    .square.dark .coord { color: var(--sq-light); }
+
+    /* Control panel & telemetry */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .card-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .stat-box {
+      background: var(--surface-light);
+      padding: 10px;
+      border-radius: 6px;
+    }
+
+    .stat-label { font-size: 0.75rem; color: var(--text-muted); }
+    .stat-val { font-size: 1.15rem; font-weight: 700; color: var(--primary); margin-top: 2px; }
+
+    /* Eval bar */
+    .eval-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .eval-bar-bg {
+      flex: 1;
+      height: 14px;
+      background: #1e293b;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      display: flex;
+    }
+
+    .eval-bar-fill {
+      height: 100%;
+      background: var(--primary);
+      width: 50%;
+      transition: width 0.4s ease;
+    }
+
+    .eval-score-text {
+      font-size: 0.9rem;
+      font-weight: 700;
+      min-width: 55px;
+      text-align: right;
+    }
+
+    /* Button and controls */
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      background: var(--surface-light);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    button:hover { background: var(--primary); color: #000; border-color: var(--primary); }
+    button.primary { background: var(--primary); color: #000; border-color: var(--primary); }
+    button.primary:hover { background: var(--primary-hover); }
+
+    /* Move notation box */
+    .move-history {
+      height: 140px;
+      overflow-y: auto;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+      font-family: monospace;
+      font-size: 0.85rem;
+      display: grid;
+      grid-template-columns: 40px 1fr 1fr;
+      row-gap: 4px;
+      align-content: start;
+    }
+
+    .move-num { color: var(--text-muted); }
+    .move-item { padding: 2px 6px; border-radius: 4px; cursor: pointer; }
+    .move-item:hover { background: var(--surface-light); }
+    .move-item.active { background: var(--primary); color: #000; font-weight: bold; }
+
+    /* FEN bar */
+    .fen-box {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    input[type="text"] {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: var(--text);
+      font-size: 0.8rem;
+      font-family: monospace;
+    }
+
+    .status-banner {
+      padding: 8px 12px;
+      background: var(--surface-light);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-indicator { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+    .status-indicator.busy { background: #facc15; animation: pulse 1s infinite; }
+    @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 22H5V20H19V22M17 18H7V17L9 14V11C9 9.34 10.34 8 12 8S15 9.34 15 11V14L17 17V18M13 3H11V5H9V7H15V5H13V3Z"/>
+    </svg>
+    ChessMinds
+    <span class="badge">C++20 Native Engine</span>
+  </div>
+  <div class="status-banner">
+    <div id="engineStatusDot" class="status-indicator"></div>
+    <span id="engineStatusText">Engine Ready</span>
+  </div>
+</header>
+
+<div class="main-container">
+  <!-- Left: Chessboard & Board Navigation -->
+  <div class="board-wrapper">
+    <div class="board-container" id="chessboard"></div>
+
+    <!-- Navigation & board buttons -->
+    <div class="btn-group" style="width: 100%; justify-content: center;">
+      <button onclick="navFirst()" title="First Move">&lt;&lt;</button>
+      <button onclick="navPrev()" title="Previous Move">&lt;</button>
+      <button onclick="navNext()" title="Next Move">&gt;</button>
+      <button onclick="navLast()" title="Latest Move">&gt;&gt;</button>
+      <button onclick="toggleFlip()" title="Flip Board">Flip</button>
+      <button onclick="newGame()" class="primary">New Game</button>
+    </div>
+  </div>
+
+  <!-- Right: Engine Telemetry & Controls -->
+  <div class="sidebar">
+    <!-- Live Engine Evaluation & Stats -->
+    <div class="card">
+      <div class="card-title">
+        <span>Engine Telemetry</span>
+        <span id="turnIndicator" style="color: var(--primary);">White to Move</span>
+      </div>
+
+      <div class="eval-container">
+        <span class="stat-label">EVAL:</span>
+        <div class="eval-bar-bg">
+          <div id="evalBarFill" class="eval-bar-fill"></div>
+        </div>
+        <span id="evalScoreText" class="eval-score-text">0.00</span>
+      </div>
+
+      <div class="telemetry-grid" style="margin-top: 12px;">
+        <div class="stat-box">
+          <div class="stat-label">Search Depth</div>
+          <div id="statDepth" class="stat-val">-</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Nodes / Sec</div>
+          <div id="statNps" class="stat-val">-</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Nodes Searched</div>
+          <div id="statNodes" class="stat-val">-</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Engine Best Move</div>
+          <div id="statBestMove" class="stat-val" style="color: var(--accent);">-</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 10px; font-size: 0.8rem; color: var(--text-muted);">
+        <strong>Engine Line (PV):</strong>
+        <span id="statPv" style="font-family: monospace; color: var(--text);">None</span>
+      </div>
+    </div>
+
+    <!-- Engine Play Controls -->
+    <div class="card">
+      <div class="card-title">Engine Play Options</div>
+      <div class="btn-group">
+        <button id="btnEngineMove" onclick="requestEngineMove(true)" class="primary">Play Engine Move</button>
+        <button onclick="undoMove()">Takeback</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.85rem;">
+        <input type="checkbox" id="chkAutoEngine" checked>
+        <label for="chkAutoEngine">Auto-reply with ChessMinds as Black</label>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+        <span class="stat-label">Search Depth:</span>
+        <input type="range" id="rngDepth" min="1" max="10" value="6" oninput="updateDepthLabel()" style="flex:1;">
+        <span id="lblDepth" style="font-weight: bold; width: 20px;">6</span>
+      </div>
+    </div>
+
+    <!-- Move History Notation -->
+    <div class="card">
+      <div class="card-title">Move Notation</div>
+      <div class="move-history" id="moveHistory"></div>
+    </div>
+
+    <!-- FEN Control -->
+    <div class="card">
+      <div class="card-title">Position (FEN)</div>
+      <div class="fen-box">
+        <input type="text" id="fenInput" readonly>
+        <button onclick="copyFen()">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Chess Piece SVGs (Wikipedia/cburnett clean vector graphics)
+  const PIECE_SVGS = {
+    P: `<svg viewBox="0 0 45 45"><path d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`,
+    N: `<svg viewBox="0 0 45 45"><path d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21" fill="#fff" stroke="#000" stroke-width="1.5"/><path d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`,
+    B: `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.5"><g fill="#fff"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.354.49-2.323.47-3-.5 1.354-1.94 3-2 3-2z"/><path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g><path d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5" stroke-linejoin="miter"/></g></svg>`,
+    R: `<svg viewBox="0 0 45 45"><g fill="#fff" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 39h27v-3H9v3zm3-3v-4.5h21V36H12zm2-4.5v-13h17v13H14zM11 14h23l-2-6H13l-2 6z"/><path d="M12 9v3m5-3v3m6-3v3m5-3v3m5-3v3" stroke-width="1"/></g></svg>`,
+    Q: `<svg viewBox="0 0 45 45"><g fill="#fff" stroke="#000" stroke-width="1.5" stroke-linecap="round"><path d="M9 26c8.5-1.5 21-1.5 27 0l2-12-7 11-4-14-4 14-7-11 2 12z"/><path d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 2-1 .5-2.5 0 0 0-1.5-1.5-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"/><circle cx="6" cy="12" r="2"/><circle cx="14" cy="9" r="2"/><circle cx="22.5" cy="8" r="2"/><circle cx="31" cy="9" r="2"/><circle cx="39" cy="12" r="2"/></g></svg>`,
+    K: `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round"><path d="M22.5 11.63V6M20 8h5" stroke-linejoin="miter"/><path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" fill="#fff" stroke-linecap="butt"/><path d="M11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-1-1 8-6 4-3-2.5-6-1-8.5 2-2.5-3-5.5-4.5-8.5-2-5 4-2-5-6-4-3 6 6 10.5 6 10.5v7z" fill="#fff"/><path d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0"/></g></svg>`,
+    p: `<svg viewBox="0 0 45 45"><path d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z" fill="#333" stroke="#fff" stroke-width="1.5"/></svg>`,
+    n: `<svg viewBox="0 0 45 45"><path d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21" fill="#333" stroke="#fff" stroke-width="1.5"/><path d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3" fill="#333" stroke="#fff" stroke-width="1.5"/></svg>`,
+    b: `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#fff" stroke-width="1.5"><g fill="#333"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.354.49-2.323.47-3-.5 1.354-1.94 3-2 3-2z"/><path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g><path d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5" stroke-linejoin="miter"/></g></svg>`,
+    r: `<svg viewBox="0 0 45 45"><g fill="#333" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 39h27v-3H9v3zm3-3v-4.5h21V36H12zm2-4.5v-13h17v13H14zM11 14h23l-2-6H13l-2 6z"/><path d="M12 9v3m5-3v3m6-3v3m5-3v3m5-3v3" stroke-width="1"/></g></svg>`,
+    q: `<svg viewBox="0 0 45 45"><g fill="#333" stroke="#fff" stroke-width="1.5" stroke-linecap="round"><path d="M9 26c8.5-1.5 21-1.5 27 0l2-12-7 11-4-14-4 14-7-11 2 12z"/><path d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 2-1 .5-2.5 0 0 0-1.5-1.5-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"/><circle cx="6" cy="12" r="2"/><circle cx="14" cy="9" r="2"/><circle cx="22.5" cy="8" r="2"/><circle cx="31" cy="9" r="2"/><circle cx="39" cy="12" r="2"/></g></svg>`,
+    k: `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#fff" stroke-width="1.5" stroke-linecap="round"><path d="M22.5 11.63V6M20 8h5" stroke-linejoin="miter"/><path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" fill="#333" stroke-linecap="butt"/><path d="M11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-1-1 8-6 4-3-2.5-6-1-8.5 2-2.5-3-5.5-4.5-8.5-2-5 4-2-5-6-4-3 6 6 10.5 6 10.5v7z" fill="#333"/><path d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0"/></g></svg>`
+  };
+
+  // Web Audio synthesizer for piece moves
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  function playSound(type) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    const now = audioCtx.currentTime;
+
+    if (type === 'move') {
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(140, now + 0.08);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+      osc.start(now);
+      osc.stop(now + 0.08);
+    } else if (type === 'capture') {
+      osc.frequency.setValueAtTime(450, now);
+      osc.frequency.exponentialRampToValueAtTime(100, now + 0.12);
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+      osc.start(now);
+      osc.stop(now + 0.12);
+    }
+  }
+
+  // Board State
+  let board = [];
+  let isFlipped = false;
+  let selectedSq = null;
+  let moveHistory = []; // array of UCI strings e.g. ["e2e4", "e7e5"]
+  let historyPly = 0;
+  let sideToMove = 'w';
+  let lastMove = null;
+
+  function initBoard() {
+    board = [
+      ['r','n','b','q','k','b','n','r'],
+      ['p','p','p','p','p','p','p','p'],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['P','P','P','P','P','P','P','P'],
+      ['R','N','B','Q','K','B','N','R']
+    ];
+    sideToMove = 'w';
+    moveHistory = [];
+    historyPly = 0;
+    lastMove = null;
+    selectedSq = null;
+    renderBoard();
+    updateMoveHistoryUI();
+    updateFenUI();
+    document.getElementById("turnIndicator").innerText = "White to Move";
+  }
+
+  function renderBoard() {
+    const container = document.getElementById("chessboard");
+    container.innerHTML = "";
+
+    for (let r = 0; r < 8; ++r) {
+      for (let f = 0; f < 8; ++f) {
+        const row = isFlipped ? 7 - r : r;
+        const col = isFlipped ? 7 - f : f;
+        const sqName = String.fromCharCode(97 + col) + (8 - row);
+        const isLight = (row + col) % 2 === 0;
+
+        const sqDiv = document.createElement("div");
+        sqDiv.className = `square ${isLight ? 'light' : 'dark'}`;
+        sqDiv.dataset.square = sqName;
+        sqDiv.dataset.row = row;
+        sqDiv.dataset.col = col;
+
+        if (selectedSq === sqName) sqDiv.classList.add("selected");
+        if (lastMove && (lastMove.from === sqName || lastMove.to === sqName)) sqDiv.classList.add("last-move");
+
+        // Coordinates
+        if ((!isFlipped && row === 7) || (isFlipped && row === 0)) {
+          const fileLabel = document.createElement("span");
+          fileLabel.className = "coord coord-file";
+          fileLabel.innerText = String.fromCharCode(97 + col);
+          sqDiv.appendChild(fileLabel);
+        }
+        if ((!isFlipped && col === 0) || (isFlipped && col === 7)) {
+          const rankLabel = document.createElement("span");
+          rankLabel.className = "coord coord-rank";
+          rankLabel.innerText = (8 - row);
+          sqDiv.appendChild(rankLabel);
+        }
+
+        const piece = board[row][col];
+        if (piece && PIECE_SVGS[piece]) {
+          const pDiv = document.createElement("div");
+          pDiv.className = "piece-img";
+          pDiv.innerHTML = PIECE_SVGS[piece];
+          sqDiv.appendChild(pDiv);
+        }
+
+        sqDiv.addEventListener("click", () => handleSquareClick(sqName, row, col));
+        container.appendChild(sqDiv);
+      }
+    }
+  }
+
+  function handleSquareClick(sqName, r, c) {
+    if (!selectedSq) {
+      const piece = board[r][c];
+      if (!piece) return;
+      const isWhitePiece = piece === piece.toUpperCase();
+      if ((sideToMove === 'w' && !isWhitePiece) || (sideToMove === 'b' && isWhitePiece)) return;
+
+      selectedSq = sqName;
+      renderBoard();
+    } else {
+      if (selectedSq === sqName) {
+        selectedSq = null;
+        renderBoard();
+        return;
+      }
+
+      const fromSq = selectedSq;
+      const toSq = sqName;
+      const uciMove = fromSq + toSq;
+
+      // Attempt move
+      applyMove(uciMove);
+      selectedSq = null;
+    }
+  }
+
+  function applyMove(uciMove) {
+    const fromCol = uciMove.charCodeAt(0) - 97;
+    const fromRow = 8 - parseInt(uciMove[1]);
+    const toCol = uciMove.charCodeAt(2) - 97;
+    const toRow = 8 - parseInt(uciMove[3]);
+
+    const movingPiece = board[fromRow][fromCol];
+    const targetPiece = board[toRow][toCol];
+
+    // Simple castling rook movements
+    if (movingPiece.toUpperCase() === 'K') {
+      if (fromCol === 4 && toCol === 6) { // Kingside
+        board[fromRow][5] = board[fromRow][7];
+        board[fromRow][7] = '';
+      } else if (fromCol === 4 && toCol === 2) { // Queenside
+        board[fromRow][3] = board[fromRow][0];
+        board[fromRow][0] = '';
+      }
+    }
+
+    // Pawn promotion
+    let finalPiece = movingPiece;
+    if (movingPiece === 'P' && toRow === 0) finalPiece = 'Q';
+    if (movingPiece === 'p' && toRow === 7) finalPiece = 'q';
+
+    board[toRow][toCol] = finalPiece;
+    board[fromRow][fromCol] = '';
+
+    playSound(targetPiece ? 'capture' : 'move');
+
+    lastMove = { from: uciMove.substring(0, 2), to: uciMove.substring(2, 4) };
+    moveHistory.push(uciMove);
+    historyPly++;
+    sideToMove = (sideToMove === 'w') ? 'b' : 'w';
+
+    document.getElementById("turnIndicator").innerText = (sideToMove === 'w') ? "White to Move" : "Black to Move";
+
+    renderBoard();
+    updateMoveHistoryUI();
+    updateFenUI();
+
+    // Auto-reply with ChessMinds if enabled
+    if (document.getElementById("chkAutoEngine").checked && sideToMove === 'b') {
+      setTimeout(() => requestEngineMove(false), 200);
+    }
+  }
+
+  function requestEngineMove(manual) {
+    const depth = parseInt(document.getElementById("rngDepth").value) || 6;
+    setEngineStatus("Thinking...", true);
+
+    fetch("/api/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fen: "startpos",
+        moves: moveHistory,
+        depth: depth
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      setEngineStatus("Engine Ready", false);
+      if (data.bestmove) {
+        document.getElementById("statDepth").innerText = data.depth;
+        document.getElementById("statNps").innerText = (data.nps).toLocaleString();
+        document.getElementById("statNodes").innerText = (data.nodes).toLocaleString();
+        document.getElementById("statBestMove").innerText = data.bestmove;
+        document.getElementById("statPv").innerText = data.pv || data.bestmove;
+
+        // Update eval bar (-10 to +10 range)
+        const cp = data.score;
+        const pawns = (cp / 100).toFixed(2);
+        document.getElementById("evalScoreText").innerText = (pawns > 0 ? "+" : "") + pawns;
+        const fillPct = Math.min(Math.max((cp + 1000) / 2000 * 100, 5), 95);
+        document.getElementById("evalBarFill").style.width = fillPct + "%";
+
+        applyMove(data.bestmove);
+      }
+    })
+    .catch(err => {
+      setEngineStatus("Offline (Check server.py)", false);
+      console.error(err);
+    });
+  }
+
+  function setEngineStatus(text, busy) {
+    const dot = document.getElementById("engineStatusDot");
+    dot.className = "status-indicator" + (busy ? " busy" : "");
+    document.getElementById("engineStatusText").innerText = text;
+  }
+
+  function updateMoveHistoryUI() {
+    const box = document.getElementById("moveHistory");
+    box.innerHTML = "";
+    for (let i = 0; i < moveHistory.length; i += 2) {
+      const moveNum = Math.floor(i / 2) + 1;
+      const numSpan = document.createElement("span");
+      numSpan.className = "move-num";
+      numSpan.innerText = moveNum + ".";
+
+      const wSpan = document.createElement("span");
+      wSpan.className = "move-item" + (i === moveHistory.length - 1 ? " active" : "");
+      wSpan.innerText = moveHistory[i];
+
+      box.appendChild(numSpan);
+      box.appendChild(wSpan);
+
+      if (i + 1 < moveHistory.length) {
+        const bSpan = document.createElement("span");
+        bSpan.className = "move-item" + (i + 1 === moveHistory.length - 1 ? " active" : "");
+        bSpan.innerText = moveHistory[i + 1];
+        box.appendChild(bSpan);
+      }
+    }
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function updateFenUI() {
+    // Generate FEN string
+    let fen = "";
+    for (let r = 0; r < 8; ++r) {
+      let empty = 0;
+      for (let c = 0; c < 8; ++c) {
+        const p = board[r][c];
+        if (!p) empty++;
+        else {
+          if (empty > 0) { fen += empty; empty = 0; }
+          fen += p;
+        }
+      }
+      if (empty > 0) fen += empty;
+      if (r < 7) fen += "/";
+    }
+    fen += ` ${sideToMove} - - 0 1`;
+    document.getElementById("fenInput").value = fen;
+  }
+
+  function copyFen() {
+    const fen = document.getElementById("fenInput").value;
+    navigator.clipboard.writeText(fen);
+    alert("FEN copied to clipboard!");
+  }
+
+  function toggleFlip() {
+    isFlipped = !isFlipped;
+    renderBoard();
+  }
+
+  function updateDepthLabel() {
+    document.getElementById("lblDepth").innerText = document.getElementById("rngDepth").value;
+  }
+
+  function newGame() {
+    initBoard();
+  }
+
+  function undoMove() {
+    if (moveHistory.length === 0) return;
+    moveHistory.pop();
+    // Replay moves from start
+    const saved = [...moveHistory];
+    initBoard();
+    saved.forEach(m => applyMove(m));
+  }
+
+  function navFirst() { while (moveHistory.length > 0) undoMove(); }
+  function navPrev() { undoMove(); }
+  function navNext() { /* Future PGN replay */ }
+  function navLast() { /* Latest */ }
+
+  // Startup
+  initBoard();
+</script>
+
+</body>
+</html>

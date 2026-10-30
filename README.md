@@ -91,7 +91,24 @@ cmake --build build
 
 ---
 
-## 5. Launch Command & Lichess-Bot Configuration
+## 5. Web Frontend Interface (Interactive MVP)
+
+ChessMinds includes a zero-dependency web interface with an interactive chessboard, real-time evaluation bar, engine telemetry (NPS, depth, nodes, PV), move navigation, and sound effects.
+
+### Starting the Web Interface
+
+#### Quick Start:
+* **Windows**: Double-click `launch_gui.bat` or run:
+  ```powershell
+  python web/server.py
+  ```
+* **Browser**: Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in any browser.
+
+The server automatically bridges HTTP requests to the compiled `chessmind.exe` engine via standard UCI commands over stdio pipes.
+
+---
+
+## 6. Launch Command & Lichess-Bot Configuration
 
 ### Launch Command
 - Windows: `.\build\chessmind.exe`
@@ -134,7 +151,7 @@ cmake --build build
 
 ---
 
-## 6. UCI Protocol Reference
+## 7. UCI Protocol Reference
 
 | Command | Response | Description |
 |---|---|---|
@@ -149,6 +166,6 @@ cmake --build build
 
 ---
 
-## 7. License
+## 8. License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
