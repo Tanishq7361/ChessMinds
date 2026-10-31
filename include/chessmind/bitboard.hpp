@@ -27,6 +27,26 @@ inline Square pop_lsb(Bitboard& bb) noexcept {
     return sq;
 }
 
+/// @brief Sets the bit at `sq` to 1.
+inline void set_bit(Bitboard& bb, Square sq) noexcept {
+    bb |= (1ULL << sq);
+}
+
+/// @brief Clears the bit at `sq` to 0.
+inline void clear_bit(Bitboard& bb, Square sq) noexcept {
+    bb &= ~(1ULL << sq);
+}
+
+/// @brief Checks whether the bit at `sq` is set.
+[[nodiscard]] constexpr bool test_bit(Bitboard bb, Square sq) noexcept {
+    return (bb & (1ULL << sq)) != 0;
+}
+
+/// @brief Checks if a bitboard contains more than one set bit.
+[[nodiscard]] constexpr bool more_than_one(Bitboard bb) noexcept {
+    return (bb & (bb - 1)) != 0;
+}
+
 namespace bitboards {
 
 /// @brief Initializes precomputed attack lookup tables for leaping pieces (pawns, knights, kings).
@@ -69,6 +89,39 @@ constexpr Bitboard RANK_5 = RANK_1 << 32;
 constexpr Bitboard RANK_6 = RANK_1 << 40;
 constexpr Bitboard RANK_7 = RANK_1 << 48;
 constexpr Bitboard RANK_8 = RANK_1 << 56;
+
+// Directional Bitboard Shifts
+[[nodiscard]] constexpr Bitboard shift_north(Bitboard bb) noexcept {
+    return bb << 8;
+}
+
+[[nodiscard]] constexpr Bitboard shift_south(Bitboard bb) noexcept {
+    return bb >> 8;
+}
+
+[[nodiscard]] constexpr Bitboard shift_east(Bitboard bb) noexcept {
+    return (bb & ~FILE_H) << 1;
+}
+
+[[nodiscard]] constexpr Bitboard shift_west(Bitboard bb) noexcept {
+    return (bb & ~FILE_A) >> 1;
+}
+
+[[nodiscard]] constexpr Bitboard shift_north_east(Bitboard bb) noexcept {
+    return (bb & ~FILE_H) << 9;
+}
+
+[[nodiscard]] constexpr Bitboard shift_north_west(Bitboard bb) noexcept {
+    return (bb & ~FILE_A) << 7;
+}
+
+[[nodiscard]] constexpr Bitboard shift_south_east(Bitboard bb) noexcept {
+    return (bb & ~FILE_H) >> 7;
+}
+
+[[nodiscard]] constexpr Bitboard shift_south_west(Bitboard bb) noexcept {
+    return (bb & ~FILE_A) >> 9;
+}
 
 } // namespace bitboards
 } // namespace chessmind

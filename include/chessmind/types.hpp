@@ -30,7 +30,8 @@ enum PieceType : uint8_t {
     ROOK = 3,
     QUEEN = 4,
     KING = 5,
-    NONE = 6
+    NONE = 6,
+    NO_PIECE_TYPE = 6
 };
 
 /// @brief Specific piece instances with both color and piece type encoded.
@@ -50,6 +51,42 @@ enum Piece : uint8_t {
     EMPTY = 12
 };
 
+/// @brief File indices (0 = File A, 7 = File H).
+enum File : uint8_t {
+    FILE_A_IDX = 0,
+    FILE_B_IDX,
+    FILE_C_IDX,
+    FILE_D_IDX,
+    FILE_E_IDX,
+    FILE_F_IDX,
+    FILE_G_IDX,
+    FILE_H_IDX
+};
+
+/// @brief Rank indices (0 = Rank 1, 7 = Rank 8).
+enum Rank : uint8_t {
+    RANK_1_IDX = 0,
+    RANK_2_IDX,
+    RANK_3_IDX,
+    RANK_4_IDX,
+    RANK_5_IDX,
+    RANK_6_IDX,
+    RANK_7_IDX,
+    RANK_8_IDX
+};
+
+/// @brief Directional board step offsets.
+enum Direction : int8_t {
+    NORTH = 8,
+    SOUTH = -8,
+    EAST = 1,
+    WEST = -1,
+    NORTH_EAST = 9,
+    NORTH_WEST = 7,
+    SOUTH_EAST = -7,
+    SOUTH_WEST = -9
+};
+
 /// @brief Constructs a colored Piece from a Color and PieceType.
 [[nodiscard]] constexpr Piece make_piece(Color c, PieceType pt) noexcept {
     return static_cast<Piece>((c == WHITE ? 0 : 6) + pt);
@@ -65,6 +102,31 @@ enum Piece : uint8_t {
     return (p == EMPTY) ? Color::NO_COLOR : static_cast<Color>(p / 6);
 }
 
+/// @brief Converts a Piece to its standard FEN character representation.
+[[nodiscard]] constexpr char piece_to_char(Piece p) noexcept {
+    constexpr const char symbols[] = "PNBRQKpnbrqk ";
+    return (p <= EMPTY) ? symbols[p] : ' ';
+}
+
+/// @brief Converts a standard FEN character into a Piece.
+[[nodiscard]] constexpr Piece char_to_piece(char ch) noexcept {
+    switch (ch) {
+        case 'P': return W_PAWN;
+        case 'N': return W_KNIGHT;
+        case 'B': return W_BISHOP;
+        case 'R': return W_ROOK;
+        case 'Q': return W_QUEEN;
+        case 'K': return W_KING;
+        case 'p': return B_PAWN;
+        case 'n': return B_KNIGHT;
+        case 'b': return B_BISHOP;
+        case 'r': return B_ROOK;
+        case 'q': return B_QUEEN;
+        case 'k': return B_KING;
+        default:  return EMPTY;
+    }
+}
+
 /// @brief Squares on the chessboard indexed 0 to 63 (Little-Endian Rank-File mapping: A1=0, H8=63).
 enum Square : uint8_t {
     SQ_A1 = 0,  SQ_B1, SQ_C1, SQ_D1, SQ_E1, SQ_F1, SQ_G1, SQ_H1,
@@ -77,6 +139,19 @@ enum Square : uint8_t {
     SQ_A8, SQ_B8, SQ_C8, SQ_D8, SQ_E8, SQ_F8, SQ_G8, SQ_H8,
     SQ_NONE = 64
 };
+
+/// @brief Total number of board squares.
+constexpr int SQ_COUNT = 64;
+
+/// @brief Step a square in a given direction.
+[[nodiscard]] constexpr Square operator+(Square sq, Direction dir) noexcept {
+    return static_cast<Square>(static_cast<int>(sq) + static_cast<int>(dir));
+}
+
+/// @brief Step a square in the opposite of a given direction.
+[[nodiscard]] constexpr Square operator-(Square sq, Direction dir) noexcept {
+    return static_cast<Square>(static_cast<int>(sq) - static_cast<int>(dir));
+}
 
 /// @brief Constructs a Square given file [0..7] and rank [0..7].
 [[nodiscard]] constexpr Square make_square(int file, int rank) noexcept {
@@ -91,6 +166,26 @@ enum Square : uint8_t {
 /// @brief Returns the 0-indexed rank [0..7] (1-8) of a square.
 [[nodiscard]] constexpr int square_rank(Square sq) noexcept {
     return sq / 8;
+}
+
+/// @brief Converts a Square into coordinate string notation (e.g. SQ_E4 -> "e4").
+[[nodiscard]] inline std::string square_to_string(Square sq) {
+    if (sq >= SQ_NONE) return "-";
+    std::string s;
+    s += static_cast<char>('a' + square_file(sq));
+    s += static_cast<char>('1' + square_rank(sq));
+    return s;
+}
+
+/// @brief Parses a coordinate string (e.g. "e4") into a Square.
+[[nodiscard]] inline Square string_to_square(std::string_view str) noexcept {
+    if (str.length() < 2) return SQ_NONE;
+    int f = str[0] - 'a';
+    int r = str[1] - '1';
+    if (f >= 0 && f < 8 && r >= 0 && r < 8) {
+        return make_square(f, r);
+    }
+    return SQ_NONE;
 }
 
 /// @brief Bit flags representing castling availability.
@@ -117,6 +212,13 @@ enum MoveFlags : uint8_t {
 
 /// @brief Compact representation of a chess move.
 struct Move {
+    static constexpr uint8_t QUIET = FLAG_QUIET;
+    static constexpr uint8_t DOUBLE_PUSH = FLAG_DOUBLE_PUSH;
+    static constexpr uint8_t CASTLE = FLAG_CASTLE;
+    static constexpr uint8_t CAPTURE = FLAG_CAPTURE;
+    static constexpr uint8_t EN_PASSANT = FLAG_EN_PASSANT;
+    static constexpr uint8_t PROMOTION = FLAG_PROMOTION;
+
     Square from = SQ_NONE;            // Origin square [0..63]
     Square to = SQ_NONE;              // Destination square [0..63]
     PieceType promo = PieceType::NONE;// Promotion piece type (Q, R, B, N)
@@ -126,9 +228,29 @@ struct Move {
     constexpr Move(Square f, Square t, uint8_t fl = FLAG_QUIET, PieceType pr = PieceType::NONE) noexcept
         : from(f), to(t), promo(pr), flags(fl) {}
 
+    /// @brief Creates an empty / null move.
+    [[nodiscard]] static constexpr Move null_move() noexcept {
+        return Move{};
+    }
+
     /// @brief Checks whether the move is uninitialized or null.
     [[nodiscard]] constexpr bool is_null() const noexcept {
         return from == SQ_NONE;
+    }
+
+    /// @brief Origin square.
+    [[nodiscard]] constexpr Square from_sq() const noexcept {
+        return from;
+    }
+
+    /// @brief Destination square.
+    [[nodiscard]] constexpr Square to_sq() const noexcept {
+        return to;
+    }
+
+    /// @brief Promotion piece type (or NONE).
+    [[nodiscard]] constexpr PieceType promotion_piece() const noexcept {
+        return promo;
     }
 
     /// @brief Checks whether the move is a capture.
@@ -151,9 +273,22 @@ struct Move {
         return (flags & FLAG_CASTLE) != 0;
     }
 
+    /// @brief Encoded integer value of the move for fast hashing or comparison.
+    [[nodiscard]] constexpr uint32_t raw() const noexcept {
+        return static_cast<uint32_t>(from) |
+              (static_cast<uint32_t>(to) << 8) |
+              (static_cast<uint32_t>(promo) << 16) |
+              (static_cast<uint32_t>(flags) << 24);
+    }
+
     /// @brief Move equality operator.
     [[nodiscard]] constexpr bool operator==(const Move& other) const noexcept {
         return from == other.from && to == other.to && promo == other.promo && flags == other.flags;
+    }
+
+    /// @brief Move inequality operator.
+    [[nodiscard]] constexpr bool operator!=(const Move& other) const noexcept {
+        return !(*this == other);
     }
 
     /// @brief Converts the move to standard UCI string format (e.g. "e2e4", "e7e8q").

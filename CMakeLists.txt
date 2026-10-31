@@ -52,6 +52,17 @@ target_link_libraries(chessmind
         chessmind_warnings
 )
 
+# Unit tests for foundational types and bitboards
+add_executable(test_types
+    tests/test_types.cpp
+)
+
+target_link_libraries(test_types
+    PRIVATE
+        chessmind_core
+        chessmind_warnings
+)
+
 # Unit and Perft test target
 add_executable(test_perft
     tests/test_perft.cpp
