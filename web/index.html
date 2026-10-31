@@ -351,6 +351,113 @@
     .status-indicator { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
     .status-indicator.busy { background: #facc15; animation: pulse 1s infinite; }
     @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+
+    /* Promotion dialog overlay */
+    .promo-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      backdrop-filter: blur(4px);
+    }
+    .promo-dialog {
+      background: var(--surface);
+      border: 2px solid var(--primary);
+      border-radius: 12px;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+    .promo-dialog h3 {
+      font-size: 1rem;
+      color: var(--primary);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .promo-choices {
+      display: flex;
+      gap: 10px;
+    }
+    .promo-choice {
+      width: 64px;
+      height: 64px;
+      background: var(--surface-light);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+    }
+    .promo-choice:hover {
+      border-color: var(--primary);
+      background: var(--primary);
+      transform: scale(1.1);
+    }
+    .promo-choice img {
+      width: 52px;
+      height: 52px;
+      object-fit: contain;
+      pointer-events: none;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+    }
+
+    /* Drag ghost piece */
+    .drag-ghost {
+      position: fixed;
+      width: 65px;
+      height: 65px;
+      pointer-events: none;
+      z-index: 999;
+      filter: drop-shadow(0 8px 16px rgba(0,0,0,0.5));
+      transform: translate(-50%, -50%);
+    }
+
+    /* Piece move animation */
+    .piece-img.animating {
+      transition: transform 0.18s ease-out;
+    }
+
+    /* Square dragging states */
+    .square.drag-from {
+      opacity: 0.45;
+    }
+    .square.drag-over {
+      outline: 3px solid var(--primary);
+      outline-offset: -3px;
+    }
+
+    /* Game result banner */
+    .game-result-banner {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(11, 17, 32, 0.92);
+      border: 2px solid var(--primary);
+      border-radius: 12px;
+      padding: 18px 32px;
+      z-index: 100;
+      text-align: center;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+      backdrop-filter: blur(6px);
+    }
+    .game-result-banner h2 {
+      font-size: 1.3rem;
+      color: var(--primary);
+      margin-bottom: 4px;
+    }
+    .game-result-banner p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
   </style>
 </head>
 <body class="theme-sky-sea">
@@ -540,6 +647,16 @@
   let historyPly = 0;
   let sideToMove = 'w';
   let lastMove = null;
+  let enPassantSq = null; // tracks the en passant target square (e.g. "e3")
+  let gameOver = false;
+  let legalMoves = []; // populated by engine for hint dots
+  let pendingPromoFrom = null;
+  let pendingPromoTo = null;
+
+  // Drag state
+  let dragPiece = null;
+  let dragFromSq = null;
+  let dragGhost = null;
 
   function initBoard() {
     board = [
@@ -557,6 +674,11 @@
     historyPly = 0;
     lastMove = null;
     selectedSq = null;
+    enPassantSq = null;
+    gameOver = false;
+    legalMoves = [];
+    pendingPromoFrom = null;
+    pendingPromoTo = null;
     renderBoard();
     updateMoveHistoryUI();
     updateFenUI();
@@ -637,6 +759,10 @@
     const container = document.getElementById("chessboard");
     container.innerHTML = "";
 
+    // Remove any existing game result banner
+    const existingBanner = container.parentElement.querySelector('.game-result-banner');
+    if (existingBanner) existingBanner.remove();
+
     for (let r = 0; r < 8; ++r) {
       for (let f = 0; f < 8; ++f) {
         const row = isFlipped ? 7 - r : r;
@@ -652,6 +778,7 @@
 
         if (selectedSq === sqName) sqDiv.classList.add("selected");
         if (lastMove && (lastMove.from === sqName || lastMove.to === sqName)) sqDiv.classList.add("last-move");
+        if (dragFromSq === sqName) sqDiv.classList.add("drag-from");
 
         // Coordinates
         if ((!isFlipped && row === 7) || (isFlipped && row === 0)) {
@@ -677,13 +804,119 @@
           sqDiv.appendChild(img);
         }
 
+        // Legal move hint dots (when a piece is selected)
+        if (selectedSq && selectedSq !== sqName) {
+          const uciCandidate = selectedSq + sqName;
+          const isLegalDest = legalMoves.some(m => m.startsWith(uciCandidate));
+          if (isLegalDest) {
+            if (piece) {
+              // Capture ring
+              const ring = document.createElement("div");
+              ring.className = "hint-capture";
+              sqDiv.appendChild(ring);
+            } else {
+              // Empty destination dot
+              const dot = document.createElement("div");
+              dot.className = "hint-dot";
+              sqDiv.appendChild(dot);
+            }
+          }
+        }
+
+        // Click handler
         sqDiv.addEventListener("click", () => handleSquareClick(sqName, row, col));
+
+        // Drag-and-drop handlers
+        sqDiv.addEventListener("mousedown", (e) => handleDragStart(e, sqName, row, col));
+
         container.appendChild(sqDiv);
       }
     }
   }
 
+  // --- Drag-and-Drop ---
+  function handleDragStart(e, sqName, r, c) {
+    if (gameOver) return;
+    const piece = board[r][c];
+    if (!piece) return;
+    const isWhitePiece = piece === piece.toUpperCase();
+    if ((sideToMove === 'w' && !isWhitePiece) || (sideToMove === 'b' && isWhitePiece)) return;
+
+    e.preventDefault();
+    dragPiece = piece;
+    dragFromSq = sqName;
+    selectedSq = sqName;
+
+    // Fetch legal moves for this position
+    fetchLegalMoves();
+
+    // Create ghost piece
+    dragGhost = document.createElement("img");
+    dragGhost.className = "drag-ghost";
+    dragGhost.src = PIECE_IMAGES[piece];
+    dragGhost.style.left = e.clientX + "px";
+    dragGhost.style.top = e.clientY + "px";
+    document.body.appendChild(dragGhost);
+
+    renderBoard();
+
+    document.addEventListener("mousemove", handleDragMove);
+    document.addEventListener("mouseup", handleDragEnd);
+  }
+
+  function handleDragMove(e) {
+    if (!dragGhost) return;
+    dragGhost.style.left = e.clientX + "px";
+    dragGhost.style.top = e.clientY + "px";
+  }
+
+  function handleDragEnd(e) {
+    document.removeEventListener("mousemove", handleDragMove);
+    document.removeEventListener("mouseup", handleDragEnd);
+
+    if (dragGhost) {
+      dragGhost.remove();
+      dragGhost = null;
+    }
+
+    if (!dragFromSq) return;
+
+    // Find the square under cursor
+    const elem = document.elementFromPoint(e.clientX, e.clientY);
+    const sqElem = elem ? elem.closest('.square') : null;
+    const toSq = sqElem ? sqElem.dataset.square : null;
+
+    if (toSq && toSq !== dragFromSq) {
+      const fromSq = dragFromSq;
+      dragFromSq = null;
+      dragPiece = null;
+
+      // Check if promotion
+      const fromRow = 8 - parseInt(fromSq[1]);
+      const toRow = 8 - parseInt(toSq[1]);
+      const movingPiece = board[fromRow][fromSq.charCodeAt(0) - 97];
+
+      if (movingPiece === 'P' && toRow === 0) {
+        showPromotionDialog(fromSq, toSq, 'w');
+        return;
+      }
+      if (movingPiece === 'p' && toRow === 7) {
+        showPromotionDialog(fromSq, toSq, 'b');
+        return;
+      }
+
+      applyMove(fromSq + toSq);
+      selectedSq = null;
+    } else {
+      dragFromSq = null;
+      dragPiece = null;
+    }
+
+    renderBoard();
+  }
+
   function handleSquareClick(sqName, r, c) {
+    if (gameOver) return;
     if (!selectedSq) {
       const piece = board[r][c];
       if (!piece) return;
@@ -691,34 +924,142 @@
       if ((sideToMove === 'w' && !isWhitePiece) || (sideToMove === 'b' && isWhitePiece)) return;
 
       selectedSq = sqName;
+      fetchLegalMoves();
       renderBoard();
     } else {
       if (selectedSq === sqName) {
         selectedSq = null;
+        legalMoves = [];
         renderBoard();
         return;
       }
 
+      // Check if clicking own piece to re-select
+      const clickedPiece = board[r][c];
+      if (clickedPiece) {
+        const isWhiteClicked = clickedPiece === clickedPiece.toUpperCase();
+        if ((sideToMove === 'w' && isWhiteClicked) || (sideToMove === 'b' && !isWhiteClicked)) {
+          selectedSq = sqName;
+          fetchLegalMoves();
+          renderBoard();
+          return;
+        }
+      }
+
       const fromSq = selectedSq;
       const toSq = sqName;
-      const uciMove = fromSq + toSq;
 
-      // Apply player move
-      applyMove(uciMove);
+      // Check if promotion
+      const fromRow = 8 - parseInt(fromSq[1]);
+      const toRow = 8 - parseInt(toSq[1]);
+      const movingPiece = board[fromRow][fromSq.charCodeAt(0) - 97];
+
+      if (movingPiece === 'P' && toRow === 0) {
+        showPromotionDialog(fromSq, toSq, 'w');
+        return;
+      }
+      if (movingPiece === 'p' && toRow === 7) {
+        showPromotionDialog(fromSq, toSq, 'b');
+        return;
+      }
+
+      applyMove(fromSq + toSq);
       selectedSq = null;
+      legalMoves = [];
     }
   }
 
+  // --- Promotion Dialog ---
+  function showPromotionDialog(fromSq, toSq, color) {
+    pendingPromoFrom = fromSq;
+    pendingPromoTo = toSq;
+
+    const overlay = document.createElement("div");
+    overlay.className = "promo-overlay";
+    overlay.id = "promoOverlay";
+
+    const dialog = document.createElement("div");
+    dialog.className = "promo-dialog";
+
+    const title = document.createElement("h3");
+    title.innerText = "Promote Pawn To:";
+    dialog.appendChild(title);
+
+    const choices = document.createElement("div");
+    choices.className = "promo-choices";
+
+    const pieces = color === 'w'
+      ? [['Q', 'Queen'], ['R', 'Rook'], ['B', 'Bishop'], ['N', 'Knight']]
+      : [['q', 'Queen'], ['r', 'Rook'], ['b', 'Bishop'], ['n', 'Knight']];
+
+    for (const [pc, name] of pieces) {
+      const btn = document.createElement("div");
+      btn.className = "promo-choice";
+      btn.title = name;
+      const img = document.createElement("img");
+      img.src = PIECE_IMAGES[pc];
+      img.alt = name;
+      btn.appendChild(img);
+      btn.addEventListener("click", () => {
+        const promoChar = pc.toLowerCase(); // q, r, b, n
+        applyMove(pendingPromoFrom + pendingPromoTo + promoChar);
+        selectedSq = null;
+        legalMoves = [];
+        pendingPromoFrom = null;
+        pendingPromoTo = null;
+        overlay.remove();
+      });
+      choices.appendChild(btn);
+    }
+
+    dialog.appendChild(choices);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    // Close on clicking outside dialog
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        overlay.remove();
+        pendingPromoFrom = null;
+        pendingPromoTo = null;
+      }
+    });
+  }
+
+  // --- Fetch legal moves from the engine for hint dots ---
+  function fetchLegalMoves() {
+    fetch("/api/legalmoves", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fen: "startpos",
+        moves: moveHistory
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.moves) {
+        legalMoves = data.moves;
+        renderBoard();
+      }
+    })
+    .catch(() => { /* silently ignore — hints are optional */ });
+  }
+
   function applyMove(uciMove) {
+    if (gameOver) return;
+
     const fromCol = uciMove.charCodeAt(0) - 97;
     const fromRow = 8 - parseInt(uciMove[1]);
     const toCol = uciMove.charCodeAt(2) - 97;
     const toRow = 8 - parseInt(uciMove[3]);
+    const promoChar = uciMove.length >= 5 ? uciMove[4] : null;
 
     const movingPiece = board[fromRow][fromCol];
     const targetPiece = board[toRow][toCol];
+    let isCapture = !!targetPiece;
 
-    // Simple castling rook movements
+    // Castling rook movements
     if (movingPiece.toUpperCase() === 'K') {
       if (fromCol === 4 && toCol === 6) { // Kingside
         board[fromRow][5] = board[fromRow][7];
@@ -729,15 +1070,40 @@
       }
     }
 
+    // En passant capture
+    if (movingPiece.toUpperCase() === 'P' && toCol !== fromCol && !targetPiece) {
+      // Diagonal pawn move to empty square = en passant
+      board[fromRow][toCol] = ''; // remove captured pawn
+      isCapture = true;
+    }
+
+    // Track en passant target for next move
+    if (movingPiece.toUpperCase() === 'P' && Math.abs(toRow - fromRow) === 2) {
+      const epRow = (fromRow + toRow) / 2;
+      enPassantSq = String.fromCharCode(97 + fromCol) + (8 - epRow);
+    } else {
+      enPassantSq = null;
+    }
+
     // Pawn promotion
     let finalPiece = movingPiece;
-    if (movingPiece === 'P' && toRow === 0) finalPiece = 'Q';
-    if (movingPiece === 'p' && toRow === 7) finalPiece = 'q';
+    if (promoChar) {
+      const promoMap = {
+        'q': sideToMove === 'w' ? 'Q' : 'q',
+        'r': sideToMove === 'w' ? 'R' : 'r',
+        'b': sideToMove === 'w' ? 'B' : 'b',
+        'n': sideToMove === 'w' ? 'N' : 'n'
+      };
+      finalPiece = promoMap[promoChar] || finalPiece;
+    } else {
+      if (movingPiece === 'P' && toRow === 0) finalPiece = 'Q';
+      if (movingPiece === 'p' && toRow === 7) finalPiece = 'q';
+    }
 
     board[toRow][toCol] = finalPiece;
     board[fromRow][fromCol] = '';
 
-    playSound(targetPiece ? 'capture' : 'move');
+    playSound(isCapture ? 'capture' : 'move');
 
     lastMove = { from: uciMove.substring(0, 2), to: uciMove.substring(2, 4) };
     moveHistory.push(uciMove);
@@ -757,6 +1123,7 @@
   }
 
   function requestEngineMove(manual) {
+    if (gameOver) return;
     const depth = parseInt(document.getElementById("rngDepth").value) || 6;
     setEngineStatus("Thinking...", true);
 
@@ -772,7 +1139,7 @@
     .then(res => res.json())
     .then(data => {
       setEngineStatus("Engine Ready", false);
-      if (data.bestmove) {
+      if (data.bestmove && data.bestmove !== "(none)") {
         document.getElementById("statDepth").innerText = data.depth;
         document.getElementById("statNps").innerText = (data.nps || 0).toLocaleString();
         document.getElementById("statBestMove").innerText = data.bestmove;
@@ -782,12 +1149,41 @@
         updateEvalBar(data.score || 0);
 
         applyMove(data.bestmove);
+      } else if (data.gameover || data.bestmove === "(none)") {
+        // Game over
+        showGameResult(data);
       }
     })
     .catch(err => {
       setEngineStatus("Offline (Check server.py)", false);
       console.error(err);
     });
+  }
+
+  function showGameResult(data) {
+    gameOver = true;
+    const boardArea = document.querySelector('.board-area');
+    const banner = document.createElement("div");
+    banner.className = "game-result-banner";
+
+    let title = "Game Over";
+    let subtitle = "";
+
+    if (data.result === "checkmate") {
+      const winner = sideToMove === 'w' ? "Black" : "White";
+      title = "Checkmate!";
+      subtitle = `${winner} wins`;
+    } else if (data.result === "stalemate") {
+      title = "Stalemate";
+      subtitle = "Draw by stalemate";
+    } else {
+      title = "Game Over";
+      subtitle = data.result || "No legal moves";
+    }
+
+    banner.innerHTML = `<h2>${title}</h2><p>${subtitle}</p>`;
+    boardArea.style.position = "relative";
+    boardArea.appendChild(banner);
   }
 
   function setEngineStatus(text, busy) {
@@ -857,11 +1253,17 @@
   }
 
   function newGame() {
+    // Remove game result banner if visible
+    const banner = document.querySelector('.game-result-banner');
+    if (banner) banner.remove();
     initBoard();
   }
 
   function undoMove() {
     if (moveHistory.length === 0) return;
+    gameOver = false;
+    const banner = document.querySelector('.game-result-banner');
+    if (banner) banner.remove();
     moveHistory.pop();
     const saved = [...moveHistory];
     initBoard();

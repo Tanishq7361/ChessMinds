@@ -22,6 +22,8 @@ private:
     void handle_position(const std::string& line);
     void handle_go(const std::string& line);
     void handle_bench(int depth = 6);
+    void handle_perft(int depth);
+    void handle_legalmoves();
 
     Board board_;
     TranspositionTable tt_;

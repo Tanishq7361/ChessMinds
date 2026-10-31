@@ -138,6 +138,41 @@ class EngineBridge:
 
             return result
 
+    def query_legal_moves(self, fen=None, moves=None):
+        """Query legal moves from engine using dedicated 'legalmoves' command."""
+        with self.lock:
+            if not self.process:
+                return []
+
+            if fen and fen != "startpos":
+                pos_cmd = f"position fen {fen}"
+            else:
+                pos_cmd = "position startpos"
+
+            if moves:
+                pos_cmd += " moves " + " ".join(moves)
+
+            self.send_command(pos_cmd)
+            self.send_command("legalmoves")
+
+            legal_moves = []
+            while True:
+                line = self.process.stdout.readline()
+                if not line:
+                    break
+                line = line.strip()
+                if line.startswith("legalmoves"):
+                    parts = line.split()
+                    legal_moves = parts[1:]
+                    break
+                elif ":" in line and not line.startswith("Nodes"):
+                    move_str = line.split(":")[0].strip()
+                    if len(move_str) >= 4 and move_str[0].isalpha():
+                        legal_moves.append(move_str)
+                elif line.startswith("Nodes") or line.startswith("Total"):
+                    break
+            return legal_moves
+
 bridge = EngineBridge(ENGINE_PATH)
 
 class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -160,6 +195,27 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
             movetime = data.get("movetime", None)
 
             response = bridge.query_move(fen=fen, moves=moves, depth=depth, movetime=movetime)
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode("utf-8"))
+
+        elif self.path == "/api/legalmoves":
+            content_length = int(self.headers.get("Content-Length", 0))
+            post_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(post_data.decode("utf-8"))
+            except Exception as e:
+                self.send_error(400, f"Invalid JSON: {e}")
+                return
+
+            fen = data.get("fen", "startpos")
+            moves = data.get("moves", [])
+
+            legal = bridge.query_legal_moves(fen=fen, moves=moves)
+            response = {"moves": legal}
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

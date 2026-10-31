@@ -81,9 +81,24 @@ void Uci::handle_go(const std::string& line) {
     std::string token;
     iss >> token; // consume "go"
 
+    // Check for 'go perft <depth>' first
+    if (iss >> token) {
+        if (token == "perft") {
+            int depth = 1;
+            iss >> depth;
+            if (depth <= 0) depth = 1;
+            handle_perft(depth);
+            return;
+        }
+    }
+
+    // Reset the stream and re-parse for normal go command
+    std::istringstream iss2(line);
+    iss2 >> token; // consume "go"
+
     SearchLimits limits;
 
-    while (iss >> token) {
+    while (iss2 >> token) {
         if (token == "wtime") {
             iss >> limits.wtime;
         } else if (token == "btime") {
@@ -138,6 +153,52 @@ void Uci::handle_bench(int depth) {
               << "============================================\n" << std::flush;
 }
 
+static uint64_t run_perft_divide(Board& b, int depth) {
+    if (depth == 0) return 1ULL;
+    std::vector<Move> moves;
+    MoveGen::generate_legal_moves(b, moves);
+    if (depth == 1) return moves.size();
+    uint64_t nodes = 0;
+    for (const auto& m : moves) {
+        b.make_move(m);
+        nodes += run_perft_divide(b, depth - 1);
+        b.undo_move();
+    }
+    return nodes;
+}
+
+/// @brief Runs a perft divide on the current board position and prints per-move leaf counts.
+void Uci::handle_perft(int depth) {
+    std::vector<Move> moves;
+    MoveGen::generate_legal_moves(board_, moves);
+    uint64_t total_nodes = 0;
+    auto t0 = std::chrono::steady_clock::now();
+
+    for (const auto& m : moves) {
+        board_.make_move(m);
+        uint64_t nodes = (depth > 1) ? run_perft_divide(board_, depth - 1) : 1ULL;
+        board_.undo_move();
+        total_nodes += nodes;
+        std::cout << m.to_uci() << ": " << nodes << "\n";
+    }
+
+    auto t1 = std::chrono::steady_clock::now();
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    std::cout << "\nNodes searched: " << total_nodes << "\n"
+              << "Time taken:     " << elapsed_ms << " ms\n" << std::flush;
+}
+
+/// @brief Outputs all currently legal moves for UI hint dots and frontend validation.
+void Uci::handle_legalmoves() {
+    std::vector<Move> moves;
+    MoveGen::generate_legal_moves(board_, moves);
+    std::cout << "legalmoves";
+    for (const auto& m : moves) {
+        std::cout << " " << m.to_uci();
+    }
+    std::cout << "\n" << std::flush;
+}
+
 /// @brief Continuously reads commands from stdin and dispatches to appropriate handlers.
 void Uci::loop() {
     std::string line;
@@ -158,6 +219,13 @@ void Uci::loop() {
             handle_position(line);
         } else if (command == "go") {
             handle_go(line);
+        } else if (command == "perft") {
+            int depth = 1;
+            iss >> depth;
+            if (depth <= 0) depth = 1;
+            handle_perft(depth);
+        } else if (command == "legalmoves") {
+            handle_legalmoves();
         } else if (command == "bench") {
             int depth = 6;
             iss >> depth;
