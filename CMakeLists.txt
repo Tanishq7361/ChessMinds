@@ -74,6 +74,17 @@ target_link_libraries(test_perft
         chessmind_warnings
 )
 
+# Comprehensive Move Generation and Turn Audit test target
+add_executable(test_audit
+    tests/test_audit.cpp
+)
+
+target_link_libraries(test_audit
+    PRIVATE
+        chessmind_core
+        chessmind_warnings
+)
+
 # Engine Benchmark target
 add_executable(benchmark_suite
     benchmarks/benchmark.cpp

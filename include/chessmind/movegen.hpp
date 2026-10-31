@@ -18,6 +18,13 @@ public:
     /// @brief Generates pseudo-legal moves (moves matching piece movement rules, before check validation).
     /// @param captures_only If true, omits quiet non-capturing moves.
     static void generate_pseudo_legal_moves(const Board& board, std::vector<Move>& moves, bool captures_only = false);
+
+    /// @brief Checks whether a specific move is strictly legal in the given board position.
+    [[nodiscard]] static bool is_legal_move(Board& board, const Move& m);
+
+    /// @brief Parses a UCI move string (e.g. "e2e4", "e7e8q") and verifies it against legal moves.
+    /// Returns the legal Move object or Move::null_move() if illegal or invalid.
+    [[nodiscard]] static Move parse_uci_move(Board& board, std::string_view uci);
 };
 
 } // namespace chessmind

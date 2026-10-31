@@ -42,35 +42,25 @@ void Uci::handle_position(const std::string& line) {
         iss >> token; // checks for "moves" or EOF
     } else if (token == "fen") {
         std::string fen;
-        // Read 6 standard FEN fields
-        for (int i = 0; i < 6 && (iss >> token); ++i) {
-            if (token == "moves") break;
+        while (iss >> token && token != "moves") {
             if (!fen.empty()) fen += " ";
             fen += token;
         }
         board_.set_fen(fen);
-        if (token != "moves") {
-            iss >> token; // checks for "moves"
-        }
     }
 
-    // Apply subsequent moves
+    // Apply subsequent moves with full legality verification
     if (token == "moves") {
         std::string move_str;
         while (iss >> move_str) {
-            std::vector<Move> legal;
-            MoveGen::generate_legal_moves(board_, legal);
-            bool played = false;
-            for (const auto& m : legal) {
-                if (m.to_uci() == move_str) {
-                    board_.make_move(m);
-                    played = true;
-                    break;
-                }
-            }
-            if (!played) {
+            Move m = MoveGen::parse_uci_move(board_, move_str);
+            if (m.is_null()) {
+                std::cerr << "info string Warning: rejected illegal move '" << move_str
+                          << "' in position (side to move: "
+                          << (board_.side_to_move() == WHITE ? "White" : "Black") << ")\n";
                 break;
             }
+            board_.make_move(m);
         }
     }
 }

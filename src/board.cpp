@@ -53,6 +53,9 @@ void Board::clear() {
 /// @brief Places a piece on a square and updates the bitboard structures.
 void Board::put_piece(Square sq, Piece p) {
     if (sq >= 64 || p == EMPTY) return;
+    if (board_[sq] != EMPTY) {
+        remove_piece(sq);
+    }
     Color c = color_of(p);
     PieceType pt = type_of(p);
     Bitboard mask = square_bb(sq);
@@ -130,24 +133,53 @@ bool Board::set_fen(std::string_view fen) {
     // 2. Active color
     side_to_move_ = (active_color == "b") ? BLACK : WHITE;
 
-    // 3. Castling availability
+    // 3. Castling availability - validate that king and rooks are actually present
     castling_rights_ = NO_CASTLING;
     for (char ch : castling) {
         switch (ch) {
-            case 'K': castling_rights_ |= WHITE_OO; break;
-            case 'Q': castling_rights_ |= WHITE_OOO; break;
-            case 'k': castling_rights_ |= BLACK_OO; break;
-            case 'q': castling_rights_ |= BLACK_OOO; break;
+            case 'K':
+                if (board_[SQ_E1] == W_KING && board_[SQ_H1] == W_ROOK) {
+                    castling_rights_ |= WHITE_OO;
+                }
+                break;
+            case 'Q':
+                if (board_[SQ_E1] == W_KING && board_[SQ_A1] == W_ROOK) {
+                    castling_rights_ |= WHITE_OOO;
+                }
+                break;
+            case 'k':
+                if (board_[SQ_E8] == B_KING && board_[SQ_H8] == B_ROOK) {
+                    castling_rights_ |= BLACK_OO;
+                }
+                break;
+            case 'q':
+                if (board_[SQ_E8] == B_KING && board_[SQ_A8] == B_ROOK) {
+                    castling_rights_ |= BLACK_OOO;
+                }
+                break;
             default: break;
         }
     }
 
-    // 4. En passant target square
+    // 4. En passant target square - validate rank and presence of enemy pawn
+    ep_square_ = SQ_NONE;
     if (ep_str != "-" && ep_str.length() == 2) {
         int ep_file = ep_str[0] - 'a';
         int ep_rank = ep_str[1] - '1';
-        if (ep_file >= 0 && ep_file < 8 && ep_rank >= 0 && ep_rank < 8) {
-            ep_square_ = make_square(ep_file, ep_rank);
+        if (ep_file >= 0 && ep_file < 8) {
+            if (side_to_move_ == WHITE && ep_rank == 5) {
+                Square target_sq = make_square(ep_file, 5);
+                Square pawn_sq = make_square(ep_file, 4);
+                if (board_[target_sq] == EMPTY && board_[pawn_sq] == B_PAWN) {
+                    ep_square_ = target_sq;
+                }
+            } else if (side_to_move_ == BLACK && ep_rank == 2) {
+                Square target_sq = make_square(ep_file, 2);
+                Square pawn_sq = make_square(ep_file, 3);
+                if (board_[target_sq] == EMPTY && board_[pawn_sq] == W_PAWN) {
+                    ep_square_ = target_sq;
+                }
+            }
         }
     }
 
@@ -312,7 +344,11 @@ void Board::make_move(const Move& m) {
 
     // Place piece at destination (promote if applicable)
     if (m.is_promotion()) {
-        put_piece(m.to, make_piece(us, m.promo));
+        PieceType pr = m.promo;
+        if (pr != QUEEN && pr != ROOK && pr != BISHOP && pr != KNIGHT) {
+            pr = QUEEN;
+        }
+        put_piece(m.to, make_piece(us, pr));
     } else {
         put_piece(m.to, moving_piece);
     }

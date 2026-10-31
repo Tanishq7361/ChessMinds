@@ -684,6 +684,7 @@
     updateFenUI();
     updateEvalBar(0);
     document.getElementById("turnIndicator").innerText = "White to Move";
+    fetchLegalMoves();
   }
 
   function changeTheme(themeClass) {
@@ -888,8 +889,17 @@
 
     if (toSq && toSq !== dragFromSq) {
       const fromSq = dragFromSq;
+      const uciBase = fromSq + toSq;
       dragFromSq = null;
       dragPiece = null;
+
+      // Validate legality against engine legal moves
+      const matchingLegalMoves = legalMoves.filter(m => m.startsWith(uciBase));
+      if (matchingLegalMoves.length === 0) {
+        selectedSq = null;
+        renderBoard();
+        return;
+      }
 
       // Check if promotion
       const fromRow = 8 - parseInt(fromSq[1]);
@@ -905,7 +915,7 @@
         return;
       }
 
-      applyMove(fromSq + toSq);
+      applyMove(uciBase);
       selectedSq = null;
     } else {
       dragFromSq = null;
@@ -948,6 +958,16 @@
 
       const fromSq = selectedSq;
       const toSq = sqName;
+      const uciBase = fromSq + toSq;
+
+      // Validate legality against engine legal moves
+      const matchingLegalMoves = legalMoves.filter(m => m.startsWith(uciBase));
+      if (matchingLegalMoves.length === 0) {
+        // Not a legal move: deselect and abort
+        selectedSq = null;
+        renderBoard();
+        return;
+      }
 
       // Check if promotion
       const fromRow = 8 - parseInt(fromSq[1]);
@@ -963,9 +983,8 @@
         return;
       }
 
-      applyMove(fromSq + toSq);
+      applyMove(uciBase);
       selectedSq = null;
-      legalMoves = [];
     }
   }
 
@@ -1115,6 +1134,7 @@
     renderBoard();
     updateMoveHistoryUI();
     updateFenUI();
+    fetchLegalMoves();
 
     // Auto-reply with ChessMinds if enabled
     if (document.getElementById("chkAutoEngine").checked && sideToMove === 'b') {
