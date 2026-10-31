@@ -211,6 +211,14 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=BASE_DIR, **kwargs)
 
+    def translate_path(self, path):
+        # Support /ChessMinds/ base path transparently
+        if path.startswith("/ChessMinds/"):
+            path = "/" + path[len("/ChessMinds/"):]
+        elif path == "/ChessMinds":
+            path = "/"
+        return super().translate_path(path)
+
     def send_json_response(self, data, status=200):
         try:
             payload = json.dumps(data).encode("utf-8")
@@ -223,8 +231,18 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
             pass
 
+    @property
+    def normalized_path(self):
+        p = self.path
+        if p.startswith("/ChessMinds/"):
+            return "/" + p[len("/ChessMinds/"):]
+        elif p == "/ChessMinds":
+            return "/"
+        return p
+
     def do_POST(self):
-        if self.path == "/api/move":
+        path = self.normalized_path
+        if path == "/api/move":
             content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length)
             try:
@@ -241,7 +259,7 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
             response = bridge.query_move(fen=fen, moves=moves, depth=depth, movetime=movetime)
             self.send_json_response(response, 200)
 
-        elif self.path == "/api/evaluate":
+        elif path == "/api/evaluate":
             content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length)
             try:
@@ -257,7 +275,7 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
             response = bridge.query_move(fen=fen, moves=moves, depth=depth)
             self.send_json_response(response, 200)
 
-        elif self.path == "/api/legalmoves":
+        elif path == "/api/legalmoves":
             content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length)
             try:
@@ -274,8 +292,16 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
         else:
             self.send_error(404, "Endpoint not found")
 
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
     def do_GET(self):
-        if self.path == "/api/status":
+        path = self.normalized_path
+        if path == "/api/status":
             status = {
                 "engine_loaded": bridge.process is not None,
                 "engine_path": ENGINE_PATH,

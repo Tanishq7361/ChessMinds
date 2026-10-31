@@ -1,0 +1,14 @@
+{
+  "name": "chessminds",
+  "version": "1.0.0",
+  "description": "High-performance C++20 Chess Engine & Interactive Web Interface",
+  "type": "module",
+  "scripts": {
+    "dev": "vite web",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5"
+  }
+}

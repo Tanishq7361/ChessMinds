@@ -598,20 +598,49 @@
 </div>
 
 <script>
-  // High-Resolution Custom Piece Images added by user in /public/
+  // Base repository path configuration for GitHub Pages deployment (/ChessMinds/)
+  // Supports both deployed GitHub Pages subpath (/ChessMinds/) and local development server
+  const BASE_PATH = (function() {
+    const baseEl = document.querySelector('base');
+    if (baseEl && baseEl.getAttribute('href')) {
+      const h = baseEl.getAttribute('href');
+      return h.endsWith('/') ? h : h + '/';
+    }
+    const path = window.location.pathname;
+    if (path.startsWith('/ChessMinds/') || path === '/ChessMinds') {
+      return '/ChessMinds/';
+    }
+    return './';
+  })();
+
+  function getAssetUrl(filename) {
+    const clean = filename.replace(/^\/?public\//, '');
+    const base = BASE_PATH.endsWith('/') ? BASE_PATH : (BASE_PATH + '/');
+    return `${base}public/${clean}`;
+  }
+
+  function getApiUrl(endpoint) {
+    const clean = endpoint.startsWith('/') ? endpoint : ('/' + endpoint);
+    if (window.location.hostname.includes('github.io')) {
+      return 'http://127.0.0.1:8080' + clean;
+    }
+    return clean;
+  }
+
+  // High-Resolution Custom Piece Images in /public/
   const PIECE_IMAGES = {
-    'P': '/public/wp.png',
-    'N': '/public/wN.png',
-    'B': '/public/wB.png',
-    'R': '/public/wR.png',
-    'Q': '/public/wQ.png',
-    'K': '/public/wK.png',
-    'p': '/public/bp.png',
-    'n': '/public/bN.png',
-    'b': '/public/bB.png',
-    'r': '/public/bR.png',
-    'q': '/public/bQ.png',
-    'k': '/public/bK.png'
+    'P': getAssetUrl('wp.png'),
+    'N': getAssetUrl('wN.png'),
+    'B': getAssetUrl('wB.png'),
+    'R': getAssetUrl('wR.png'),
+    'Q': getAssetUrl('wQ.png'),
+    'K': getAssetUrl('wK.png'),
+    'p': getAssetUrl('bp.png'),
+    'n': getAssetUrl('bN.png'),
+    'b': getAssetUrl('bB.png'),
+    'r': getAssetUrl('bR.png'),
+    'q': getAssetUrl('bQ.png'),
+    'k': getAssetUrl('bK.png')
   };
 
   // Web Audio synthesizer for moves
@@ -825,7 +854,7 @@
     }
     evalAbortController = new AbortController();
 
-    fetch("/api/evaluate", {
+    fetch(getApiUrl("/api/evaluate"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1152,7 +1181,7 @@
     }
     legalMovesAbortController = new AbortController();
 
-    fetch("/api/legalmoves", {
+    fetch(getApiUrl("/api/legalmoves"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1261,7 +1290,7 @@
 
     const currentReqId = ++engineRequestId;
 
-    fetch("/api/move", {
+    fetch(getApiUrl("/api/move"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

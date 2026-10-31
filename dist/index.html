@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChessMinds - C++20 Engine Interface</title>
+  <style>:root{--bg:#0b1120;--surface:#151f32;--surface-light:#223049;--border:#334460;--text:#f8fafc;--text-muted:#94a3b8;--primary:#38bdf8;--primary-hover:#0284c7;--accent:#22c55e;--danger:#ef4444;--sq-light-base:#b9d7ea;--sq-light-grad:radial-gradient(circle at 35% 35%, #d4e9f7 0%, #b2d2e7 55%, #9bc2dc 100%);--sq-dark-base:#1b4d79;--sq-dark-grad:radial-gradient(circle at 65% 35%, #23659e 0%, #174872 60%, #113658 100%);--coord-light:#184670;--coord-dark:#c0ddf0;--sq-selected:#38bdf873;--sq-last-move:#facc1559;--sq-dest-hint:#22c55e73}body.theme-classic-wood{--sq-light-base:#f0d9b5;--sq-light-grad:radial-gradient(circle at 35% 35%, #f8e8d0 0%, #eed5af 60%, #e5caa2 100%);--sq-dark-base:#b58863;--sq-dark-grad:radial-gradient(circle at 65% 35%, #c59771 0%, #ad7f5a 60%, #996c48 100%);--coord-light:#b58863;--coord-dark:#f0d9b5}body.theme-emerald-green{--sq-light-base:#eaefd5;--sq-light-grad:radial-gradient(circle at 35% 35%, #f4f8e3 0%, #e6eccf 60%, #d8e0be 100%);--sq-dark-base:#759656;--sq-dark-grad:radial-gradient(circle at 65% 35%, #84a663 0%, #6e8e4f 60%, #5d7c3f 100%);--coord-light:#759656;--coord-dark:#eaefd5}body.theme-charcoal-slate{--sq-light-base:#cbd5e1;--sq-light-grad:radial-gradient(circle at 35% 35%, #e2e8f0 0%, #c4d0df 60%, #b3c2d3 100%);--sq-dark-base:#475569;--sq-dark-grad:radial-gradient(circle at 65% 35%, #56677f 0%, #404d5f 60%, #333e4e 100%);--coord-light:#475569;--coord-dark:#cbd5e1}body.theme-midnight-neon{--sq-light-base:#1e293b;--sq-light-grad:radial-gradient(circle at 35% 35%, #334155 0%, #1e293b 70%, #172132 100%);--sq-dark-base:#090e17;--sq-dark-grad:radial-gradient(circle at 65% 35%, #111a29 0%, #080d16 60%, #03060a 100%);--coord-light:#38bdf8;--coord-dark:#0284c7}*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif}body{background-color:var(--bg);color:var(--text);flex-direction:column;min-height:100vh;display:flex}header{background:var(--surface);border-bottom:1px solid var(--border);justify-content:space-between;align-items:center;padding:12px 24px;display:flex}.brand{color:var(--primary);align-items:center;gap:10px;font-size:1.25rem;font-weight:700;display:flex}.badge{background:var(--surface-light);color:var(--text-muted);border-radius:9999px;padding:2px 8px;font-size:.75rem}.main-container{flex:1;grid-template-columns:auto 1fr;align-items:start;gap:28px;width:100%;max-width:1350px;margin:0 auto;padding:24px;display:grid}.board-area{align-items:center;gap:14px;display:flex}.vertical-eval-wrapper{flex-direction:column;align-items:center;width:36px;height:520px;display:flex;position:relative}.vertical-eval-bar{border:2px solid var(--border);background:#18181b;border-radius:8px;flex-direction:column;justify-content:flex-end;width:28px;height:100%;display:flex;position:relative;overflow:hidden;box-shadow:0 4px 14px #00000073}.vertical-eval-fill{background:#f8fafc;width:100%;height:50%;transition:height .35s cubic-bezier(.4,0,.2,1),background .2s;box-shadow:0 -2px 6px #0000004d}.eval-badge{text-align:center;letter-spacing:-.02em;pointer-events:none;z-index:2;white-space:nowrap;width:100%;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,monospace;font-size:10.5px;font-weight:800;position:absolute}.eval-badge.white-score{color:#0f172a;bottom:8px}.eval-badge.black-score{color:#f8fafc;top:8px}.board-container{-webkit-user-select:none;user-select:none;border:3px solid #1e293b;border-radius:8px;grid-template-rows:repeat(8,1fr);grid-template-columns:repeat(8,1fr);width:520px;height:520px;display:grid;position:relative;overflow:hidden;box-shadow:0 12px 30px -5px #0009,0 8px 12px -6px #0006}.square{cursor:pointer;justify-content:center;align-items:center;width:100%;height:100%;transition:background .15s;display:flex;position:relative}.square.light{background-color:var(--sq-light-base);background-image:var(--sq-light-grad)}.square.dark{background-color:var(--sq-dark-base);background-image:var(--sq-dark-grad)}.square.selected{background:var(--sq-selected)!important}.square.last-move{background:var(--sq-last-move)!important}.square.check{background:#ef4444a6!important}.hint-dot{background:var(--sq-dest-hint);pointer-events:none;border-radius:50%;width:18px;height:18px;position:absolute;box-shadow:0 0 6px #22c55e99}.hint-capture{border:5px solid var(--sq-dest-hint);pointer-events:none;border-radius:50%;width:100%;height:100%;position:absolute}.piece-img{object-fit:contain;pointer-events:none;filter:drop-shadow(0 4px 6px #0006);width:88%;height:88%;transition:transform .1s}.coord{pointer-events:none;opacity:.9;font-size:11px;font-weight:800;position:absolute}.coord-file{bottom:2px;right:4px}.coord-rank{top:2px;left:4px}.square.light .coord{color:var(--coord-light)}.square.dark .coord{color:var(--coord-dark)}.sidebar{flex-direction:column;gap:16px;display:flex}.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px}.card-title{color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:.85rem;font-weight:700;display:flex}.telemetry-grid{grid-template-columns:repeat(2,1fr);gap:10px;display:grid}.stat-box{background:var(--surface-light);border-radius:6px;padding:10px}.stat-label{color:var(--text-muted);font-size:.75rem}.stat-val{color:var(--primary);margin-top:2px;font-size:1.15rem;font-weight:700}.btn-group{flex-wrap:wrap;gap:8px;display:flex}button,select{background:var(--surface-light);border:1px solid var(--border);color:var(--text);cursor:pointer;border-radius:6px;align-items:center;gap:6px;padding:8px 14px;font-size:.85rem;font-weight:600;transition:all .15s;display:flex}button:hover,select:hover,button.primary{background:var(--primary);color:#000;border-color:var(--primary)}button.primary:hover{background:var(--primary-hover)}select{outline:none;padding:6px 12px}.move-history{background:var(--bg);border:1px solid var(--border);border-radius:6px;grid-template-columns:40px 1fr 1fr;align-content:start;row-gap:4px;height:130px;padding:8px;font-family:monospace;font-size:.85rem;display:grid;overflow-y:auto}.move-num{color:var(--text-muted)}.move-item{cursor:pointer;border-radius:4px;padding:2px 6px}.move-item:hover{background:var(--surface-light)}.move-item.active{background:var(--primary);color:#000;font-weight:700}.fen-box{gap:8px;margin-top:8px;display:flex}input[type=text]{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;flex:1;padding:6px 10px;font-family:monospace;font-size:.8rem}.status-banner{background:var(--surface-light);border-radius:6px;align-items:center;gap:8px;padding:8px 12px;font-size:.85rem;display:flex}.status-indicator{background:var(--accent);border-radius:50%;width:10px;height:10px}.status-indicator.busy{background:#facc15;animation:1s infinite pulse}@keyframes pulse{0%{opacity:.4}50%{opacity:1}to{opacity:.4}}.promo-overlay{z-index:1000;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);background:#000000a6;justify-content:center;align-items:center;display:flex;position:fixed;inset:0}.promo-dialog{background:var(--surface);border:2px solid var(--primary);border-radius:12px;flex-direction:column;align-items:center;gap:14px;padding:20px 24px;display:flex;box-shadow:0 20px 40px #00000080}.promo-dialog h3{color:var(--primary);letter-spacing:.04em;font-size:1rem;font-weight:700}.promo-choices{gap:10px;display:flex}.promo-choice{background:var(--surface-light);border:2px solid var(--border);cursor:pointer;border-radius:8px;justify-content:center;align-items:center;width:64px;height:64px;transition:all .15s;display:flex}.promo-choice:hover{border-color:var(--primary);background:var(--primary);transform:scale(1.1)}.promo-choice img{object-fit:contain;pointer-events:none;filter:drop-shadow(0 2px 4px #0006);width:52px;height:52px}.drag-ghost{pointer-events:none;z-index:999;filter:drop-shadow(0 8px 16px #00000080);width:65px;height:65px;position:fixed;transform:translate(-50%,-50%)}.piece-img.animating{transition:transform .18s ease-out}.square.drag-from{opacity:.45}.square.drag-over{outline:3px solid var(--primary);outline-offset:-3px}.game-result-banner{border:2px solid var(--primary);z-index:100;text-align:center;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);background:#0b1120eb;border-radius:12px;padding:18px 32px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:0 12px 30px #0009}.game-result-banner h2{color:var(--primary);margin-bottom:4px;font-size:1.3rem}.game-result-banner p{color:var(--text-muted);font-size:.9rem}</style>
+</head>
+<body class="theme-sky-sea">
+
+<header>
+  <div class="brand">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 22H5V20H19V22M17 18H7V17L9 14V11C9 9.34 10.34 8 12 8S15 9.34 15 11V14L17 17V18M13 3H11V5H9V7H15V5H13V3Z"/>
+    </svg>
+    ChessMinds
+    <span class="badge">C++20 Engine</span>
+  </div>
+
+  <!-- Theme selector right in header -->
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">Theme:</span>
+    <select id="themeSelect" onchange="changeTheme(this.value)">
+      <option value="theme-sky-sea" selected>Sky & Sea (Ocean)</option>
+      <option value="theme-classic-wood">Classic Wood</option>
+      <option value="theme-emerald-green">Emerald Green</option>
+      <option value="theme-charcoal-slate">Charcoal Slate</option>
+      <option value="theme-midnight-neon">Midnight Cyber</option>
+    </select>
+
+    <div class="status-banner">
+      <div id="engineStatusDot" class="status-indicator"></div>
+      <span id="engineStatusText">Engine Ready</span>
+    </div>
+  </div>
+</header>
+
+<div class="main-container">
+  <!-- Left: Vertical Eval Bar + Chessboard + Controls -->
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+    <!-- Evaluation display right above and next to board -->
+    <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 6px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 0.75rem; font-weight: 800; letter-spacing: 0.05em; color: var(--text-muted); text-transform: uppercase;">Evaluation</span>
+        <span id="boardEvalScorePill" style="font-family: monospace; font-size: 1rem; font-weight: 800; padding: 2px 10px; border-radius: 4px; background: var(--surface-light); color: var(--accent);">+0.00</span>
+      </div>
+      <span id="boardEvalAdvantage" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">Equal position</span>
+    </div>
+
+    <div class="board-area">
+      <!-- Vertical Evaluation Bar beside board (like Lichess/Chess.com) -->
+      <div class="vertical-eval-wrapper" title="Evaluation Bar">
+        <div class="vertical-eval-bar">
+          <div id="evalBadgeBlack" class="eval-badge black-score"></div>
+          <div id="evalBarFill" class="vertical-eval-fill"></div>
+          <div id="evalBadgeWhite" class="eval-badge white-score">+0.0</div>
+        </div>
+      </div>
+
+      <!-- Main Chessboard -->
+      <div class="board-container" id="chessboard"></div>
+    </div>
+
+    <!-- Navigation & board buttons -->
+    <div class="btn-group" style="width: 100%; justify-content: center; margin-top: 4px;">
+      <button onclick="navFirst()" title="First Move">&lt;&lt;</button>
+      <button onclick="navPrev()" title="Previous Move">&lt;</button>
+      <button onclick="navNext()" title="Next Move">&gt;</button>
+      <button onclick="navLast()" title="Latest Move">&gt;&gt;</button>
+      <button onclick="toggleFlip()" title="Flip Board">Flip</button>
+      <button onclick="newGame()" class="primary">New Game</button>
+    </div>
+  </div>
+
+  <!-- Right: Engine Telemetry & Controls -->
+  <div class="sidebar">
+    <!-- Live Engine Evaluation & Stats -->
+    <div class="card">
+      <div class="card-title">
+        <span>Engine Telemetry</span>
+        <span id="turnIndicator" style="color: var(--primary);">White to Move</span>
+      </div>
+
+      <div class="telemetry-grid">
+        <div class="stat-box">
+          <div class="stat-label">Evaluation Score</div>
+          <div id="statEvalScore" class="stat-val" style="color: var(--accent);">+0.00</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Search Depth</div>
+          <div id="statDepth" class="stat-val">-</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Nodes / Sec</div>
+          <div id="statNps" class="stat-val">-</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Engine Best Move</div>
+          <div id="statBestMove" class="stat-val" style="color: var(--accent);">-</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 12px; font-size: 0.8rem; color: var(--text-muted); background: var(--bg); padding: 8px; border-radius: 6px; border: 1px solid var(--border);">
+        <strong>Engine Line (PV):</strong>
+        <span id="statPv" style="font-family: monospace; color: var(--text);">None</span>
+      </div>
+    </div>
+
+    <!-- Engine Play Controls -->
+    <div class="card">
+      <div class="card-title">Engine Play Options</div>
+      <div class="btn-group">
+        <button id="btnEngineMove" onclick="requestEngineMove(true)" class="primary">Play Engine Move</button>
+        <button onclick="undoMove()">Takeback</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.85rem;">
+        <input type="checkbox" id="chkAutoEngine" checked>
+        <label for="chkAutoEngine">Auto-reply with ChessMinds as Black</label>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+        <span class="stat-label">Search Depth:</span>
+        <input type="range" id="rngDepth" min="1" max="10" value="6" oninput="updateDepthLabel()" style="flex:1;">
+        <span id="lblDepth" style="font-weight: bold; width: 20px;">6</span>
+      </div>
+    </div>
+
+    <!-- Move History Notation -->
+    <div class="card">
+      <div class="card-title">Move Notation</div>
+      <div class="move-history" id="moveHistory"></div>
+    </div>
+
+    <!-- FEN Control -->
+    <div class="card">
+      <div class="card-title">Position (FEN)</div>
+      <div class="fen-box">
+        <input type="text" id="fenInput" readonly>
+        <button onclick="copyFen()">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Base repository path configuration for GitHub Pages deployment (/ChessMinds/)
+  // Supports both deployed GitHub Pages subpath (/ChessMinds/) and local development server
+  const BASE_PATH = (function() {
+    const baseEl = document.querySelector('base');
+    if (baseEl && baseEl.getAttribute('href')) {
+      const h = baseEl.getAttribute('href');
+      return h.endsWith('/') ? h : h + '/';
+    }
+    const path = window.location.pathname;
+    if (path.startsWith('/ChessMinds/') || path === '/ChessMinds') {
+      return '/ChessMinds/';
+    }
+    return './';
+  })();
+
+  function getAssetUrl(filename) {
+    const clean = filename.replace(/^\/?public\//, '');
+    const base = BASE_PATH.endsWith('/') ? BASE_PATH : (BASE_PATH + '/');
+    return `${base}public/${clean}`;
+  }
+
+  function getApiUrl(endpoint) {
+    const clean = endpoint.startsWith('/') ? endpoint : ('/' + endpoint);
+    if (window.location.hostname.includes('github.io')) {
+      return 'http://127.0.0.1:8080' + clean;
+    }
+    return clean;
+  }
+
+  // High-Resolution Custom Piece Images in /public/
+  const PIECE_IMAGES = {
+    'P': getAssetUrl('wp.png'),
+    'N': getAssetUrl('wN.png'),
+    'B': getAssetUrl('wB.png'),
+    'R': getAssetUrl('wR.png'),
+    'Q': getAssetUrl('wQ.png'),
+    'K': getAssetUrl('wK.png'),
+    'p': getAssetUrl('bp.png'),
+    'n': getAssetUrl('bN.png'),
+    'b': getAssetUrl('bB.png'),
+    'r': getAssetUrl('bR.png'),
+    'q': getAssetUrl('bQ.png'),
+    'k': getAssetUrl('bK.png')
+  };
+
+  // Web Audio synthesizer for moves
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  function playSound(type) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    const now = audioCtx.currentTime;
+
+    if (type === 'move') {
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(140, now + 0.08);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+      osc.start(now);
+      osc.stop(now + 0.08);
+    } else if (type === 'capture') {
+      osc.frequency.setValueAtTime(450, now);
+      osc.frequency.exponentialRampToValueAtTime(100, now + 0.12);
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+      osc.start(now);
+      osc.stop(now + 0.12);
+    }
+  }
+
+  // Board State
+  let board = [];
+  let isFlipped = false;
+  let selectedSq = null;
+  let moveHistory = [];
+  let historyPly = 0;
+  let sideToMove = 'w';
+  let lastMove = null;
+  let enPassantSq = null; // tracks the en passant target square (e.g. "e3")
+  let gameOver = false;
+  let legalMoves = []; // populated by engine for hint dots
+  let pendingPromoFrom = null;
+  let pendingPromoTo = null;
+
+  // Async & Cancellation Controllers
+  let currentEvalScore = 0;
+  let evalAbortController = null;
+  let legalMovesAbortController = null;
+  let engineTimer = null;
+  let engineRequestId = 0;
+
+  // Drag state
+  let dragPiece = null;
+  let dragFromSq = null;
+  let dragGhost = null;
+
+  function initBoard() {
+    if (engineTimer) {
+      clearTimeout(engineTimer);
+      engineTimer = null;
+    }
+    engineRequestId++;
+    if (evalAbortController) {
+      evalAbortController.abort();
+      evalAbortController = null;
+    }
+    if (legalMovesAbortController) {
+      legalMovesAbortController.abort();
+      legalMovesAbortController = null;
+    }
+    setEngineStatus("Engine Ready", false);
+
+    board = [
+      ['r','n','b','q','k','b','n','r'],
+      ['p','p','p','p','p','p','p','p'],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['P','P','P','P','P','P','P','P'],
+      ['R','N','B','Q','K','B','N','R']
+    ];
+    sideToMove = 'w';
+    moveHistory = [];
+    historyPly = 0;
+    lastMove = null;
+    selectedSq = null;
+    enPassantSq = null;
+    gameOver = false;
+    legalMoves = [];
+    pendingPromoFrom = null;
+    pendingPromoTo = null;
+    renderBoard();
+    updateMoveHistoryUI();
+    updateFenUI();
+    updateEvalBar(0);
+    document.getElementById("turnIndicator").innerText = "White to Move";
+    fetchLegalMoves();
+    requestPositionEval();
+  }
+
+  function changeTheme(themeClass) {
+    document.body.className = themeClass;
+  }
+
+  function updateEvalBar(score) {
+    currentEvalScore = score;
+    let pct = 50;
+    let scoreDisplay = "0.0";
+
+    if (Math.abs(score) >= 25000) {
+      // Checkmate score
+      const mateIn = Math.max(1, Math.round((30000 - Math.abs(score)) / 10));
+      scoreDisplay = (score > 0 ? "+M" : "-M") + mateIn;
+      pct = score > 0 ? 98 : 2;
+    } else {
+      const pawns = score / 100;
+      scoreDisplay = (pawns >= 0 ? "+" : "") + pawns.toFixed(1);
+      // Smooth sigmoid curve mapping -1000cp .. +1000cp to 5% .. 95%
+      pct = 1 / (1 + Math.pow(10, -score / 400)) * 100;
+      pct = Math.min(Math.max(pct, 5), 95);
+    }
+
+    const fillElem = document.getElementById("evalBarFill");
+    const badgeWhite = document.getElementById("evalBadgeWhite");
+    const badgeBlack = document.getElementById("evalBadgeBlack");
+    const statScore = document.getElementById("statEvalScore");
+    const boardPill = document.getElementById("boardEvalScorePill");
+    const boardAdv = document.getElementById("boardEvalAdvantage");
+
+    if (statScore) statScore.innerText = scoreDisplay;
+
+    if (boardPill) {
+      boardPill.innerText = scoreDisplay;
+      if (score > 40) {
+        boardPill.style.color = "var(--accent)";
+      } else if (score < -40) {
+        boardPill.style.color = "var(--danger)";
+      } else {
+        boardPill.style.color = "var(--primary)";
+      }
+    }
+
+    if (boardAdv) {
+      if (Math.abs(score) >= 25000) {
+        boardAdv.innerText = score > 0 ? "White has forced mate" : "Black has forced mate";
+      } else if (score > 150) {
+        boardAdv.innerText = `White is winning (${scoreDisplay})`;
+      } else if (score > 40) {
+        boardAdv.innerText = `White is slightly better (${scoreDisplay})`;
+      } else if (score < -150) {
+        boardAdv.innerText = `Black is winning (${scoreDisplay})`;
+      } else if (score < -40) {
+        boardAdv.innerText = `Black is slightly better (${scoreDisplay})`;
+      } else {
+        boardAdv.innerText = "Equal position (0.0)";
+      }
+    }
+
+    // Render vertical eval bar
+    if (fillElem && fillElem.parentElement) {
+      if (isFlipped) {
+        // Black is at bottom, White is at top
+        const blackPct = 100 - pct;
+        fillElem.style.height = blackPct + "%";
+        fillElem.style.background = "#18181b"; // Black fill at bottom
+        fillElem.parentElement.style.background = "#f8fafc"; // White background at top
+
+        if (pct < 50) {
+          // Black leads
+          badgeBlack.innerText = scoreDisplay;
+          badgeBlack.style.bottom = "8px";
+          badgeBlack.style.top = "auto";
+          badgeBlack.style.color = "#f8fafc";
+          badgeWhite.innerText = "";
+        } else {
+          // White leads
+          badgeWhite.innerText = scoreDisplay;
+          badgeWhite.style.top = "8px";
+          badgeWhite.style.bottom = "auto";
+          badgeWhite.style.color = "#0f172a";
+          badgeBlack.innerText = "";
+        }
+      } else {
+        // White is at bottom, Black is at top
+        fillElem.style.height = pct + "%";
+        fillElem.style.background = "#f8fafc"; // White fill at bottom
+        fillElem.parentElement.style.background = "#18181b"; // Black background at top
+
+        if (pct >= 50) {
+          // White leads
+          badgeWhite.innerText = scoreDisplay;
+          badgeWhite.style.bottom = "8px";
+          badgeWhite.style.top = "auto";
+          badgeWhite.style.color = "#0f172a";
+          badgeBlack.innerText = "";
+        } else {
+          // Black leads
+          badgeBlack.innerText = scoreDisplay;
+          badgeBlack.style.top = "8px";
+          badgeBlack.style.bottom = "auto";
+          badgeBlack.style.color = "#f8fafc";
+          badgeWhite.innerText = "";
+        }
+      }
+    }
+  }
+
+  function requestPositionEval() {
+    if (evalAbortController) {
+      evalAbortController.abort();
+    }
+    evalAbortController = new AbortController();
+
+    fetch(getApiUrl("/api/evaluate"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fen: "startpos",
+        moves: moveHistory,
+        depth: 6
+      }),
+      signal: evalAbortController.signal
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data && typeof data.score === "number") {
+        updateEvalBar(data.score);
+        if (data.pv) {
+          const pvElem = document.getElementById("statPv");
+          if (pvElem) pvElem.innerText = data.pv;
+        }
+        if (data.depth) {
+          const dElem = document.getElementById("statDepth");
+          if (dElem) dElem.innerText = data.depth;
+        }
+        if (data.nps) {
+          const nElem = document.getElementById("statNps");
+          if (nElem) nElem.innerText = data.nps.toLocaleString();
+        }
+      }
+    })
+    .catch(() => {});
+  }
+
+  function renderBoard() {
+    const container = document.getElementById("chessboard");
+    container.innerHTML = "";
+
+    // Remove any existing game result banner
+    const existingBanner = container.parentElement.querySelector('.game-result-banner');
+    if (existingBanner) existingBanner.remove();
+
+    for (let r = 0; r < 8; ++r) {
+      for (let f = 0; f < 8; ++f) {
+        const row = isFlipped ? 7 - r : r;
+        const col = isFlipped ? 7 - f : f;
+        const sqName = String.fromCharCode(97 + col) + (8 - row);
+        const isLight = (row + col) % 2 === 0;
+
+        const sqDiv = document.createElement("div");
+        sqDiv.className = `square ${isLight ? 'light' : 'dark'}`;
+        sqDiv.dataset.square = sqName;
+        sqDiv.dataset.row = row;
+        sqDiv.dataset.col = col;
+
+        if (selectedSq === sqName) sqDiv.classList.add("selected");
+        if (lastMove && (lastMove.from === sqName || lastMove.to === sqName)) sqDiv.classList.add("last-move");
+        if (dragFromSq === sqName) sqDiv.classList.add("drag-from");
+
+        // Coordinates
+        if ((!isFlipped && row === 7) || (isFlipped && row === 0)) {
+          const fileLabel = document.createElement("span");
+          fileLabel.className = "coord coord-file";
+          fileLabel.innerText = String.fromCharCode(97 + col);
+          sqDiv.appendChild(fileLabel);
+        }
+        if ((!isFlipped && col === 0) || (isFlipped && col === 7)) {
+          const rankLabel = document.createElement("span");
+          rankLabel.className = "coord coord-rank";
+          rankLabel.innerText = (8 - row);
+          sqDiv.appendChild(rankLabel);
+        }
+
+        const piece = board[row][col];
+        if (piece && PIECE_IMAGES[piece]) {
+          const img = document.createElement("img");
+          img.className = "piece-img";
+          img.src = PIECE_IMAGES[piece];
+          img.alt = piece;
+          img.draggable = false;
+          sqDiv.appendChild(img);
+        }
+
+        // Legal move hint dots (when a piece is selected)
+        if (selectedSq && selectedSq !== sqName) {
+          const uciCandidate = selectedSq + sqName;
+          const isLegalDest = legalMoves.some(m => m.startsWith(uciCandidate));
+          if (isLegalDest) {
+            if (piece) {
+              // Capture ring
+              const ring = document.createElement("div");
+              ring.className = "hint-capture";
+              sqDiv.appendChild(ring);
+            } else {
+              // Empty destination dot
+              const dot = document.createElement("div");
+              dot.className = "hint-dot";
+              sqDiv.appendChild(dot);
+            }
+          }
+        }
+
+        // Click handler
+        sqDiv.addEventListener("click", () => handleSquareClick(sqName, row, col));
+
+        // Drag-and-drop handlers
+        sqDiv.addEventListener("mousedown", (e) => handleDragStart(e, sqName, row, col));
+
+        container.appendChild(sqDiv);
+      }
+    }
+  }
+
+  // --- Drag-and-Drop ---
+  function handleDragStart(e, sqName, r, c) {
+    if (gameOver) return;
+    const piece = board[r][c];
+    if (!piece) return;
+    const isWhitePiece = piece === piece.toUpperCase();
+    if ((sideToMove === 'w' && !isWhitePiece) || (sideToMove === 'b' && isWhitePiece)) return;
+
+    e.preventDefault();
+    dragPiece = piece;
+    dragFromSq = sqName;
+    selectedSq = sqName;
+
+    // Fetch legal moves for this position
+    fetchLegalMoves();
+
+    // Create ghost piece
+    dragGhost = document.createElement("img");
+    dragGhost.className = "drag-ghost";
+    dragGhost.src = PIECE_IMAGES[piece];
+    dragGhost.style.left = e.clientX + "px";
+    dragGhost.style.top = e.clientY + "px";
+    document.body.appendChild(dragGhost);
+
+    renderBoard();
+
+    document.addEventListener("mousemove", handleDragMove);
+    document.addEventListener("mouseup", handleDragEnd);
+  }
+
+  function handleDragMove(e) {
+    if (!dragGhost) return;
+    dragGhost.style.left = e.clientX + "px";
+    dragGhost.style.top = e.clientY + "px";
+  }
+
+  function handleDragEnd(e) {
+    document.removeEventListener("mousemove", handleDragMove);
+    document.removeEventListener("mouseup", handleDragEnd);
+
+    if (dragGhost) {
+      dragGhost.remove();
+      dragGhost = null;
+    }
+
+    if (!dragFromSq) return;
+
+    // Find the square under cursor
+    const elem = document.elementFromPoint(e.clientX, e.clientY);
+    const sqElem = elem ? elem.closest('.square') : null;
+    const toSq = sqElem ? sqElem.dataset.square : null;
+
+    if (toSq && toSq !== dragFromSq) {
+      const fromSq = dragFromSq;
+      const uciBase = fromSq + toSq;
+      dragFromSq = null;
+      dragPiece = null;
+
+      // Validate legality against engine legal moves
+      const matchingLegalMoves = legalMoves.filter(m => m.startsWith(uciBase));
+      if (matchingLegalMoves.length === 0) {
+        selectedSq = null;
+        renderBoard();
+        return;
+      }
+
+      // Check if promotion
+      const fromRow = 8 - parseInt(fromSq[1]);
+      const toRow = 8 - parseInt(toSq[1]);
+      const movingPiece = board[fromRow][fromSq.charCodeAt(0) - 97];
+
+      if (movingPiece === 'P' && toRow === 0) {
+        showPromotionDialog(fromSq, toSq, 'w');
+        return;
+      }
+      if (movingPiece === 'p' && toRow === 7) {
+        showPromotionDialog(fromSq, toSq, 'b');
+        return;
+      }
+
+      applyMove(uciBase);
+      selectedSq = null;
+    } else {
+      dragFromSq = null;
+      dragPiece = null;
+    }
+
+    renderBoard();
+  }
+
+  function handleSquareClick(sqName, r, c) {
+    if (gameOver) return;
+    if (!selectedSq) {
+      const piece = board[r][c];
+      if (!piece) return;
+      const isWhitePiece = piece === piece.toUpperCase();
+      if ((sideToMove === 'w' && !isWhitePiece) || (sideToMove === 'b' && isWhitePiece)) return;
+
+      selectedSq = sqName;
+      fetchLegalMoves();
+      renderBoard();
+    } else {
+      if (selectedSq === sqName) {
+        selectedSq = null;
+        legalMoves = [];
+        renderBoard();
+        return;
+      }
+
+      // Check if clicking own piece to re-select
+      const clickedPiece = board[r][c];
+      if (clickedPiece) {
+        const isWhiteClicked = clickedPiece === clickedPiece.toUpperCase();
+        if ((sideToMove === 'w' && isWhiteClicked) || (sideToMove === 'b' && !isWhiteClicked)) {
+          selectedSq = sqName;
+          fetchLegalMoves();
+          renderBoard();
+          return;
+        }
+      }
+
+      const fromSq = selectedSq;
+      const toSq = sqName;
+      const uciBase = fromSq + toSq;
+
+      // Validate legality against engine legal moves
+      const matchingLegalMoves = legalMoves.filter(m => m.startsWith(uciBase));
+      if (matchingLegalMoves.length === 0) {
+        // Not a legal move: deselect and abort
+        selectedSq = null;
+        renderBoard();
+        return;
+      }
+
+      // Check if promotion
+      const fromRow = 8 - parseInt(fromSq[1]);
+      const toRow = 8 - parseInt(toSq[1]);
+      const movingPiece = board[fromRow][fromSq.charCodeAt(0) - 97];
+
+      if (movingPiece === 'P' && toRow === 0) {
+        showPromotionDialog(fromSq, toSq, 'w');
+        return;
+      }
+      if (movingPiece === 'p' && toRow === 7) {
+        showPromotionDialog(fromSq, toSq, 'b');
+        return;
+      }
+
+      applyMove(uciBase);
+      selectedSq = null;
+    }
+  }
+
+  // --- Promotion Dialog ---
+  function showPromotionDialog(fromSq, toSq, color) {
+    pendingPromoFrom = fromSq;
+    pendingPromoTo = toSq;
+
+    const overlay = document.createElement("div");
+    overlay.className = "promo-overlay";
+    overlay.id = "promoOverlay";
+
+    const dialog = document.createElement("div");
+    dialog.className = "promo-dialog";
+
+    const title = document.createElement("h3");
+    title.innerText = "Promote Pawn To:";
+    dialog.appendChild(title);
+
+    const choices = document.createElement("div");
+    choices.className = "promo-choices";
+
+    const pieces = color === 'w'
+      ? [['Q', 'Queen'], ['R', 'Rook'], ['B', 'Bishop'], ['N', 'Knight']]
+      : [['q', 'Queen'], ['r', 'Rook'], ['b', 'Bishop'], ['n', 'Knight']];
+
+    for (const [pc, name] of pieces) {
+      const btn = document.createElement("div");
+      btn.className = "promo-choice";
+      btn.title = name;
+      const img = document.createElement("img");
+      img.src = PIECE_IMAGES[pc];
+      img.alt = name;
+      btn.appendChild(img);
+      btn.addEventListener("click", () => {
+        const promoChar = pc.toLowerCase(); // q, r, b, n
+        applyMove(pendingPromoFrom + pendingPromoTo + promoChar);
+        selectedSq = null;
+        legalMoves = [];
+        pendingPromoFrom = null;
+        pendingPromoTo = null;
+        overlay.remove();
+      });
+      choices.appendChild(btn);
+    }
+
+    dialog.appendChild(choices);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    // Close on clicking outside dialog
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        overlay.remove();
+        pendingPromoFrom = null;
+        pendingPromoTo = null;
+      }
+    });
+  }
+
+  // --- Fetch legal moves from the engine for hint dots ---
+  function fetchLegalMoves() {
+    if (legalMovesAbortController) {
+      legalMovesAbortController.abort();
+    }
+    legalMovesAbortController = new AbortController();
+
+    fetch(getApiUrl("/api/legalmoves"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fen: "startpos",
+        moves: moveHistory
+      }),
+      signal: legalMovesAbortController.signal
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data && data.moves) {
+        legalMoves = data.moves;
+        renderBoard();
+      }
+    })
+    .catch(() => { /* silently ignore if aborted */ });
+  }
+
+  function applyMove(uciMove) {
+    applyMoveInternal(uciMove, false);
+  }
+
+  function applyMoveInternal(uciMove, isQuiet) {
+    if (gameOver) return;
+
+    const fromCol = uciMove.charCodeAt(0) - 97;
+    const fromRow = 8 - parseInt(uciMove[1]);
+    const toCol = uciMove.charCodeAt(2) - 97;
+    const toRow = 8 - parseInt(uciMove[3]);
+    const promoChar = uciMove.length >= 5 ? uciMove[4] : null;
+
+    const movingPiece = board[fromRow][fromCol];
+    const targetPiece = board[toRow][toCol];
+    let isCapture = !!targetPiece;
+
+    // Castling rook movements
+    if (movingPiece && movingPiece.toUpperCase() === 'K') {
+      if (fromCol === 4 && toCol === 6) { // Kingside
+        board[fromRow][5] = board[fromRow][7];
+        board[fromRow][7] = '';
+      } else if (fromCol === 4 && toCol === 2) { // Queenside
+        board[fromRow][3] = board[fromRow][0];
+        board[fromRow][0] = '';
+      }
+    }
+
+    // En passant capture
+    if (movingPiece && movingPiece.toUpperCase() === 'P' && toCol !== fromCol && !targetPiece) {
+      // Diagonal pawn move to empty square = en passant
+      board[fromRow][toCol] = ''; // remove captured pawn
+      isCapture = true;
+    }
+
+    // Track en passant target for next move
+    if (movingPiece && movingPiece.toUpperCase() === 'P' && Math.abs(toRow - fromRow) === 2) {
+      const epRow = (fromRow + toRow) / 2;
+      enPassantSq = String.fromCharCode(97 + fromCol) + (8 - epRow);
+    } else {
+      enPassantSq = null;
+    }
+
+    // Pawn promotion
+    let finalPiece = movingPiece;
+    if (promoChar) {
+      const promoMap = {
+        'q': sideToMove === 'w' ? 'Q' : 'q',
+        'r': sideToMove === 'w' ? 'R' : 'r',
+        'b': sideToMove === 'w' ? 'B' : 'b',
+        'n': sideToMove === 'w' ? 'N' : 'n'
+      };
+      finalPiece = promoMap[promoChar] || finalPiece;
+    } else {
+      if (movingPiece === 'P' && toRow === 0) finalPiece = 'Q';
+      if (movingPiece === 'p' && toRow === 7) finalPiece = 'q';
+    }
+
+    board[toRow][toCol] = finalPiece;
+    board[fromRow][fromCol] = '';
+
+    lastMove = { from: uciMove.substring(0, 2), to: uciMove.substring(2, 4) };
+    moveHistory.push(uciMove);
+    historyPly++;
+    sideToMove = (sideToMove === 'w') ? 'b' : 'w';
+
+    if (!isQuiet) {
+      playSound(isCapture ? 'capture' : 'move');
+      document.getElementById("turnIndicator").innerText = (sideToMove === 'w') ? "White to Move" : "Black to Move";
+      renderBoard();
+      updateMoveHistoryUI();
+      updateFenUI();
+      fetchLegalMoves();
+      requestPositionEval();
+
+      // Auto-reply with ChessMinds if enabled
+      if (document.getElementById("chkAutoEngine").checked && sideToMove === 'b') {
+        if (engineTimer) clearTimeout(engineTimer);
+        engineTimer = setTimeout(() => requestEngineMove(false), 200);
+      }
+    }
+  }
+
+  function requestEngineMove(manual) {
+    if (gameOver) return;
+    const depth = parseInt(document.getElementById("rngDepth").value) || 6;
+    setEngineStatus("Thinking...", true);
+
+    const currentReqId = ++engineRequestId;
+
+    fetch(getApiUrl("/api/move"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fen: "startpos",
+        moves: moveHistory,
+        depth: depth
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      // Discard response if request is stale (e.g. user clicked Undo or New Game)
+      if (currentReqId !== engineRequestId) return;
+
+      setEngineStatus("Engine Ready", false);
+      if (data.bestmove && data.bestmove !== "(none)" && data.bestmove !== "0000") {
+        document.getElementById("statDepth").innerText = data.depth;
+        document.getElementById("statNps").innerText = (data.nps || 0).toLocaleString();
+        document.getElementById("statBestMove").innerText = data.bestmove;
+        document.getElementById("statPv").innerText = data.pv || data.bestmove;
+
+        // Update the vertical evaluation bar
+        updateEvalBar(data.score || 0);
+
+        applyMove(data.bestmove);
+      } else if (data.gameover || data.bestmove === "(none)" || data.bestmove === "0000") {
+        // Game over
+        showGameResult(data);
+      }
+    })
+    .catch(err => {
+      if (currentReqId !== engineRequestId) return;
+      setEngineStatus("Offline (Check server.py)", false);
+      console.error(err);
+    });
+  }
+
+  function showGameResult(data) {
+    gameOver = true;
+    const boardArea = document.querySelector('.board-area');
+    const banner = document.createElement("div");
+    banner.className = "game-result-banner";
+
+    let title = "Game Over";
+    let subtitle = "";
+
+    if (data.result === "checkmate") {
+      const winner = sideToMove === 'w' ? "Black" : "White";
+      title = "Checkmate!";
+      subtitle = `${winner} wins`;
+    } else if (data.result === "stalemate") {
+      title = "Stalemate";
+      subtitle = "Draw by stalemate";
+    } else {
+      title = "Game Over";
+      subtitle = data.result || "No legal moves";
+    }
+
+    banner.innerHTML = `<h2>${title}</h2><p>${subtitle}</p>`;
+    boardArea.style.position = "relative";
+    boardArea.appendChild(banner);
+  }
+
+  function setEngineStatus(text, busy) {
+    const dot = document.getElementById("engineStatusDot");
+    dot.className = "status-indicator" + (busy ? " busy" : "");
+    document.getElementById("engineStatusText").innerText = text;
+  }
+
+  function updateMoveHistoryUI() {
+    const box = document.getElementById("moveHistory");
+    box.innerHTML = "";
+    for (let i = 0; i < moveHistory.length; i += 2) {
+      const moveNum = Math.floor(i / 2) + 1;
+      const numSpan = document.createElement("span");
+      numSpan.className = "move-num";
+      numSpan.innerText = moveNum + ".";
+
+      const wSpan = document.createElement("span");
+      wSpan.className = "move-item" + (i === moveHistory.length - 1 ? " active" : "");
+      wSpan.innerText = moveHistory[i];
+
+      box.appendChild(numSpan);
+      box.appendChild(wSpan);
+
+      if (i + 1 < moveHistory.length) {
+        const bSpan = document.createElement("span");
+        bSpan.className = "move-item" + (i + 1 === moveHistory.length - 1 ? " active" : "");
+        bSpan.innerText = moveHistory[i + 1];
+        box.appendChild(bSpan);
+      }
+    }
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function updateFenUI() {
+    let fen = "";
+    for (let r = 0; r < 8; ++r) {
+      let empty = 0;
+      for (let c = 0; c < 8; ++c) {
+        const p = board[r][c];
+        if (!p) empty++;
+        else {
+          if (empty > 0) { fen += empty; empty = 0; }
+          fen += p;
+        }
+      }
+      if (empty > 0) fen += empty;
+      if (r < 7) fen += "/";
+    }
+    fen += ` ${sideToMove} - - 0 1`;
+    document.getElementById("fenInput").value = fen;
+  }
+
+  function copyFen() {
+    const fen = document.getElementById("fenInput").value;
+    navigator.clipboard.writeText(fen);
+    alert("FEN copied to clipboard!");
+  }
+
+  function toggleFlip() {
+    isFlipped = !isFlipped;
+    renderBoard();
+    updateEvalBar(currentEvalScore);
+  }
+
+  function updateDepthLabel() {
+    document.getElementById("lblDepth").innerText = document.getElementById("rngDepth").value;
+  }
+
+  function newGame() {
+    if (engineTimer) {
+      clearTimeout(engineTimer);
+      engineTimer = null;
+    }
+    engineRequestId++;
+    if (evalAbortController) {
+      evalAbortController.abort();
+      evalAbortController = null;
+    }
+    if (legalMovesAbortController) {
+      legalMovesAbortController.abort();
+      legalMovesAbortController = null;
+    }
+    setEngineStatus("Engine Ready", false);
+
+    const banner = document.querySelector('.game-result-banner');
+    if (banner) banner.remove();
+    initBoard();
+  }
+
+  function undoMove() {
+    if (moveHistory.length === 0) return;
+
+    // Cancel any pending engine auto-reply and abort in-flight searches
+    if (engineTimer) {
+      clearTimeout(engineTimer);
+      engineTimer = null;
+    }
+    engineRequestId++;
+    if (evalAbortController) {
+      evalAbortController.abort();
+      evalAbortController = null;
+    }
+    if (legalMovesAbortController) {
+      legalMovesAbortController.abort();
+      legalMovesAbortController = null;
+    }
+    setEngineStatus("Engine Ready", false);
+
+    // Remove game result banner if visible
+    const banner = document.querySelector('.game-result-banner');
+    if (banner) banner.remove();
+    gameOver = false;
+
+    // If Auto Engine is on and it's White's turn, undo both the Engine's move and the User's move
+    const autoEngine = document.getElementById("chkAutoEngine").checked;
+    if (autoEngine && sideToMove === 'w' && moveHistory.length >= 2) {
+      moveHistory.pop();
+      moveHistory.pop();
+    } else {
+      moveHistory.pop();
+    }
+
+    const savedMoves = [...moveHistory];
+
+    // Reset board array to initial standard setup quietly
+    board = [
+      ['r','n','b','q','k','b','n','r'],
+      ['p','p','p','p','p','p','p','p'],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['P','P','P','P','P','P','P','P'],
+      ['R','N','B','Q','K','B','N','R']
+    ];
+    sideToMove = 'w';
+    moveHistory = [];
+    historyPly = 0;
+    lastMove = null;
+    selectedSq = null;
+    enPassantSq = null;
+    legalMoves = [];
+
+    // Replay remaining moves quietly (no sound, no network requests, no engine triggers)
+    savedMoves.forEach(m => applyMoveInternal(m, true));
+
+    // Update UI once at the final restored state
+    document.getElementById("turnIndicator").innerText = (sideToMove === 'w') ? "White to Move" : "Black to Move";
+    renderBoard();
+    updateMoveHistoryUI();
+    updateFenUI();
+    fetchLegalMoves();
+    requestPositionEval();
+  }
+
+  function navFirst() { while (moveHistory.length > 0) undoMove(); }
+  function navPrev() { undoMove(); }
+  function navNext() { /* PGN navigation */ }
+  function navLast() { /* Latest */ }
+
+  // Startup
+  initBoard();
+</script>
+
+</body>
+</html>
