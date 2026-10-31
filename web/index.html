@@ -655,12 +655,34 @@
   let pendingPromoFrom = null;
   let pendingPromoTo = null;
 
+  // Async & Cancellation Controllers
+  let currentEvalScore = 0;
+  let evalAbortController = null;
+  let legalMovesAbortController = null;
+  let engineTimer = null;
+  let engineRequestId = 0;
+
   // Drag state
   let dragPiece = null;
   let dragFromSq = null;
   let dragGhost = null;
 
   function initBoard() {
+    if (engineTimer) {
+      clearTimeout(engineTimer);
+      engineTimer = null;
+    }
+    engineRequestId++;
+    if (evalAbortController) {
+      evalAbortController.abort();
+      evalAbortController = null;
+    }
+    if (legalMovesAbortController) {
+      legalMovesAbortController.abort();
+      legalMovesAbortController = null;
+    }
+    setEngineStatus("Engine Ready", false);
+
     board = [
       ['r','n','b','q','k','b','n','r'],
       ['p','p','p','p','p','p','p','p'],
@@ -693,9 +715,6 @@
   function changeTheme(themeClass) {
     document.body.className = themeClass;
   }
-
-  let currentEvalScore = 0;
-  let evalAbortController = null;
 
   function updateEvalBar(score) {
     currentEvalScore = score;
@@ -1128,25 +1147,35 @@
 
   // --- Fetch legal moves from the engine for hint dots ---
   function fetchLegalMoves() {
+    if (legalMovesAbortController) {
+      legalMovesAbortController.abort();
+    }
+    legalMovesAbortController = new AbortController();
+
     fetch("/api/legalmoves", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         fen: "startpos",
         moves: moveHistory
-      })
+      }),
+      signal: legalMovesAbortController.signal
     })
     .then(res => res.json())
     .then(data => {
-      if (data.moves) {
+      if (data && data.moves) {
         legalMoves = data.moves;
         renderBoard();
       }
     })
-    .catch(() => { /* silently ignore — hints are optional */ });
+    .catch(() => { /* silently ignore if aborted */ });
   }
 
   function applyMove(uciMove) {
+    applyMoveInternal(uciMove, false);
+  }
+
+  function applyMoveInternal(uciMove, isQuiet) {
     if (gameOver) return;
 
     const fromCol = uciMove.charCodeAt(0) - 97;
@@ -1160,7 +1189,7 @@
     let isCapture = !!targetPiece;
 
     // Castling rook movements
-    if (movingPiece.toUpperCase() === 'K') {
+    if (movingPiece && movingPiece.toUpperCase() === 'K') {
       if (fromCol === 4 && toCol === 6) { // Kingside
         board[fromRow][5] = board[fromRow][7];
         board[fromRow][7] = '';
@@ -1171,14 +1200,14 @@
     }
 
     // En passant capture
-    if (movingPiece.toUpperCase() === 'P' && toCol !== fromCol && !targetPiece) {
+    if (movingPiece && movingPiece.toUpperCase() === 'P' && toCol !== fromCol && !targetPiece) {
       // Diagonal pawn move to empty square = en passant
       board[fromRow][toCol] = ''; // remove captured pawn
       isCapture = true;
     }
 
     // Track en passant target for next move
-    if (movingPiece.toUpperCase() === 'P' && Math.abs(toRow - fromRow) === 2) {
+    if (movingPiece && movingPiece.toUpperCase() === 'P' && Math.abs(toRow - fromRow) === 2) {
       const epRow = (fromRow + toRow) / 2;
       enPassantSq = String.fromCharCode(97 + fromCol) + (8 - epRow);
     } else {
@@ -1203,24 +1232,25 @@
     board[toRow][toCol] = finalPiece;
     board[fromRow][fromCol] = '';
 
-    playSound(isCapture ? 'capture' : 'move');
-
     lastMove = { from: uciMove.substring(0, 2), to: uciMove.substring(2, 4) };
     moveHistory.push(uciMove);
     historyPly++;
     sideToMove = (sideToMove === 'w') ? 'b' : 'w';
 
-    document.getElementById("turnIndicator").innerText = (sideToMove === 'w') ? "White to Move" : "Black to Move";
+    if (!isQuiet) {
+      playSound(isCapture ? 'capture' : 'move');
+      document.getElementById("turnIndicator").innerText = (sideToMove === 'w') ? "White to Move" : "Black to Move";
+      renderBoard();
+      updateMoveHistoryUI();
+      updateFenUI();
+      fetchLegalMoves();
+      requestPositionEval();
 
-    renderBoard();
-    updateMoveHistoryUI();
-    updateFenUI();
-    fetchLegalMoves();
-    requestPositionEval();
-
-    // Auto-reply with ChessMinds if enabled
-    if (document.getElementById("chkAutoEngine").checked && sideToMove === 'b') {
-      setTimeout(() => requestEngineMove(false), 200);
+      // Auto-reply with ChessMinds if enabled
+      if (document.getElementById("chkAutoEngine").checked && sideToMove === 'b') {
+        if (engineTimer) clearTimeout(engineTimer);
+        engineTimer = setTimeout(() => requestEngineMove(false), 200);
+      }
     }
   }
 
@@ -1228,6 +1258,8 @@
     if (gameOver) return;
     const depth = parseInt(document.getElementById("rngDepth").value) || 6;
     setEngineStatus("Thinking...", true);
+
+    const currentReqId = ++engineRequestId;
 
     fetch("/api/move", {
       method: "POST",
@@ -1240,8 +1272,11 @@
     })
     .then(res => res.json())
     .then(data => {
+      // Discard response if request is stale (e.g. user clicked Undo or New Game)
+      if (currentReqId !== engineRequestId) return;
+
       setEngineStatus("Engine Ready", false);
-      if (data.bestmove && data.bestmove !== "(none)") {
+      if (data.bestmove && data.bestmove !== "(none)" && data.bestmove !== "0000") {
         document.getElementById("statDepth").innerText = data.depth;
         document.getElementById("statNps").innerText = (data.nps || 0).toLocaleString();
         document.getElementById("statBestMove").innerText = data.bestmove;
@@ -1251,12 +1286,13 @@
         updateEvalBar(data.score || 0);
 
         applyMove(data.bestmove);
-      } else if (data.gameover || data.bestmove === "(none)") {
+      } else if (data.gameover || data.bestmove === "(none)" || data.bestmove === "0000") {
         // Game over
         showGameResult(data);
       }
     })
     .catch(err => {
+      if (currentReqId !== engineRequestId) return;
       setEngineStatus("Offline (Check server.py)", false);
       console.error(err);
     });
@@ -1356,7 +1392,21 @@
   }
 
   function newGame() {
-    // Remove game result banner if visible
+    if (engineTimer) {
+      clearTimeout(engineTimer);
+      engineTimer = null;
+    }
+    engineRequestId++;
+    if (evalAbortController) {
+      evalAbortController.abort();
+      evalAbortController = null;
+    }
+    if (legalMovesAbortController) {
+      legalMovesAbortController.abort();
+      legalMovesAbortController = null;
+    }
+    setEngineStatus("Engine Ready", false);
+
     const banner = document.querySelector('.game-result-banner');
     if (banner) banner.remove();
     initBoard();
@@ -1364,13 +1414,68 @@
 
   function undoMove() {
     if (moveHistory.length === 0) return;
-    gameOver = false;
+
+    // Cancel any pending engine auto-reply and abort in-flight searches
+    if (engineTimer) {
+      clearTimeout(engineTimer);
+      engineTimer = null;
+    }
+    engineRequestId++;
+    if (evalAbortController) {
+      evalAbortController.abort();
+      evalAbortController = null;
+    }
+    if (legalMovesAbortController) {
+      legalMovesAbortController.abort();
+      legalMovesAbortController = null;
+    }
+    setEngineStatus("Engine Ready", false);
+
+    // Remove game result banner if visible
     const banner = document.querySelector('.game-result-banner');
     if (banner) banner.remove();
-    moveHistory.pop();
-    const saved = [...moveHistory];
-    initBoard();
-    saved.forEach(m => applyMove(m));
+    gameOver = false;
+
+    // If Auto Engine is on and it's White's turn, undo both the Engine's move and the User's move
+    const autoEngine = document.getElementById("chkAutoEngine").checked;
+    if (autoEngine && sideToMove === 'w' && moveHistory.length >= 2) {
+      moveHistory.pop();
+      moveHistory.pop();
+    } else {
+      moveHistory.pop();
+    }
+
+    const savedMoves = [...moveHistory];
+
+    // Reset board array to initial standard setup quietly
+    board = [
+      ['r','n','b','q','k','b','n','r'],
+      ['p','p','p','p','p','p','p','p'],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['','','','','','','',''],
+      ['P','P','P','P','P','P','P','P'],
+      ['R','N','B','Q','K','B','N','R']
+    ];
+    sideToMove = 'w';
+    moveHistory = [];
+    historyPly = 0;
+    lastMove = null;
+    selectedSq = null;
+    enPassantSq = null;
+    legalMoves = [];
+
+    // Replay remaining moves quietly (no sound, no network requests, no engine triggers)
+    savedMoves.forEach(m => applyMoveInternal(m, true));
+
+    // Update UI once at the final restored state
+    document.getElementById("turnIndicator").innerText = (sideToMove === 'w') ? "White to Move" : "Black to Move";
+    renderBoard();
+    updateMoveHistoryUI();
+    updateFenUI();
+    fetchLegalMoves();
+    requestPositionEval();
   }
 
   function navFirst() { while (moveHistory.length > 0) undoMove(); }

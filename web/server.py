@@ -43,12 +43,18 @@ class EngineBridge:
             print(f"[EngineBridge] Warning: ChessMinds binary not found. Searching build paths...")
             return
 
+        if self.process:
+            try:
+                self.process.terminate()
+            except Exception:
+                pass
+
         print(f"[EngineBridge] Starting engine process: {self.exe_path}")
         self.process = subprocess.Popen(
             [self.exe_path],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
             bufsize=1
         )
@@ -71,6 +77,10 @@ class EngineBridge:
                 break
         print("[EngineBridge] ChessMinds engine initialized and ready.")
 
+    def ensure_engine_running(self):
+        if not self.process or self.process.poll() is not None:
+            self.start_engine()
+
     def send_command(self, cmd):
         if self.process and self.process.stdin:
             self.process.stdin.write(cmd + "\n")
@@ -78,6 +88,7 @@ class EngineBridge:
 
     def query_move(self, fen=None, moves=None, depth=6, movetime=None):
         with self.lock:
+            self.ensure_engine_running()
             if not self.process:
                 return {"error": "Engine binary not running. Please build with CMake."}
 
@@ -161,6 +172,7 @@ class EngineBridge:
     def query_legal_moves(self, fen=None, moves=None):
         """Query legal moves from engine using dedicated 'legalmoves' command."""
         with self.lock:
+            self.ensure_engine_running()
             if not self.process:
                 return []
 
@@ -199,6 +211,18 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=BASE_DIR, **kwargs)
 
+    def send_json_response(self, data, status=200):
+        try:
+            payload = json.dumps(data).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+            pass
+
     def do_POST(self):
         if self.path == "/api/move":
             content_length = int(self.headers.get("Content-Length", 0))
@@ -215,12 +239,7 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
             movetime = data.get("movetime", None)
 
             response = bridge.query_move(fen=fen, moves=moves, depth=depth, movetime=movetime)
-
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(json.dumps(response).encode("utf-8"))
+            self.send_json_response(response, 200)
 
         elif self.path == "/api/evaluate":
             content_length = int(self.headers.get("Content-Length", 0))
@@ -236,12 +255,7 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
             depth = data.get("depth", 6)
 
             response = bridge.query_move(fen=fen, moves=moves, depth=depth)
-
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(json.dumps(response).encode("utf-8"))
+            self.send_json_response(response, 200)
 
         elif self.path == "/api/legalmoves":
             content_length = int(self.headers.get("Content-Length", 0))
@@ -256,13 +270,7 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
             moves = data.get("moves", [])
 
             legal = bridge.query_legal_moves(fen=fen, moves=moves)
-            response = {"moves": legal}
-
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(json.dumps(response).encode("utf-8"))
+            self.send_json_response({"moves": legal}, 200)
         else:
             self.send_error(404, "Endpoint not found")
 
@@ -273,11 +281,7 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
                 "engine_path": ENGINE_PATH,
                 "version": "1.0.0"
             }
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(json.dumps(status).encode("utf-8"))
+            self.send_json_response(status, 200)
         else:
             super().do_GET()
 
