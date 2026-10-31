@@ -63,3 +63,14 @@ target_link_libraries(test_perft
         chessmind_warnings
 )
 
+# Engine Benchmark target
+add_executable(benchmark_suite
+    benchmarks/benchmark.cpp
+)
+
+target_link_libraries(benchmark_suite
+    PRIVATE
+        chessmind_core
+        chessmind_warnings
+)
+

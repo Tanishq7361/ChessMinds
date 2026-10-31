@@ -105,6 +105,39 @@ void Uci::handle_go(const std::string& line) {
     std::cout << "bestmove " << best_move.to_uci() << "\n" << std::flush;
 }
 
+/// @brief Runs standard benchmark positions at fixed depth and reports overall performance.
+void Uci::handle_bench(int depth) {
+    constexpr const char* BENCH_FENS[] = {
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "r1bqkb1r/pppp1ppp/2n5/4p3/2B1n3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 5",
+        "r2q1rk1/ppp2ppp/2n1bn2/2b1p3/3pP3/3P1NPP/PPP1NPB1/R1BQ1RK1 b - - 0 9"
+    };
+
+    std::cout << "[BENCH] Running ChessMinds benchmark across 5 positions (depth " << depth << ")..." << std::endl;
+    auto t0 = std::chrono::steady_clock::now();
+
+    for (size_t i = 0; i < std::size(BENCH_FENS); ++i) {
+        board_.set_fen(BENCH_FENS[i]);
+        tt_.clear();
+        searcher_.reset();
+
+        SearchLimits limits;
+        limits.max_depth = depth;
+        Move m = searcher_.start_search(board_, limits);
+        std::cout << "Position " << (i + 1) << " -> bestmove " << m.to_uci() << std::endl;
+    }
+
+    auto t1 = std::chrono::steady_clock::now();
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    std::cout << "\n============================================\n"
+              << "ChessMinds Benchmark Complete\n"
+              << "Total Time: " << elapsed_ms << " ms\n"
+              << "Depth:      " << depth << "\n"
+              << "============================================\n" << std::flush;
+}
+
 /// @brief Continuously reads commands from stdin and dispatches to appropriate handlers.
 void Uci::loop() {
     std::string line;
@@ -125,6 +158,11 @@ void Uci::loop() {
             handle_position(line);
         } else if (command == "go") {
             handle_go(line);
+        } else if (command == "bench") {
+            int depth = 6;
+            iss >> depth;
+            if (depth <= 0) depth = 6;
+            handle_bench(depth);
         } else if (command == "stop") {
             searcher_.stop();
         } else if (command == "quit") {

@@ -403,6 +403,50 @@ void Board::undo_move() {
     side_to_move_ = us;
 }
 
+/// @brief Passes turn without making a physical piece move (Null-Move Pruning).
+void Board::make_null_move() {
+    StateRecord state;
+    state.move = NULL_MOVE;
+    state.moved = EMPTY;
+    state.captured = EMPTY;
+    state.castling_rights = castling_rights_;
+    state.ep_square = ep_square_;
+    state.halfmove_clock = halfmove_clock_;
+    state.zobrist_hash = zobrist_hash_;
+
+    // Clear en passant and advance turn
+    ep_square_ = SQ_NONE;
+    ++halfmove_clock_;
+    if (side_to_move_ == BLACK) {
+        ++fullmove_number_;
+    }
+    side_to_move_ = ~side_to_move_;
+
+    zobrist_hash_ = compute_zobrist();
+    history_.push_back(state);
+    repetition_history_.push_back(zobrist_hash_);
+}
+
+/// @brief Undoes a null move, restoring turn and previous en passant state.
+void Board::undo_null_move() {
+    if (history_.empty()) return;
+
+    StateRecord state = history_.back();
+    history_.pop_back();
+    repetition_history_.pop_back();
+
+    Color us = ~side_to_move_;
+    if (us == BLACK) {
+        --fullmove_number_;
+    }
+    side_to_move_ = us;
+
+    castling_rights_ = state.castling_rights;
+    ep_square_ = state.ep_square;
+    halfmove_clock_ = state.halfmove_clock;
+    zobrist_hash_ = state.zobrist_hash;
+}
+
 /// @brief Checks if the current Zobrist key has appeared `count` times within the reversible halfmove window.
 bool Board::is_draw_by_repetition(int count) const noexcept {
     int occurrences = 0;

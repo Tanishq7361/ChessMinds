@@ -30,6 +30,10 @@ void Searcher::reset() {
             f.fill(0);
         }
     }
+    for (auto& row : pv_table_) {
+        row.fill(NULL_MOVE);
+    }
+    pv_length_.fill(0);
 }
 
 void Searcher::stop() {
@@ -138,8 +142,12 @@ int Searcher::quiescence(Board& board, int alpha, int beta, int ply) {
     return alpha;
 }
 
-/// @brief Recursive Negamax algorithm with Alpha-Beta pruning.
-int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, [[maybe_unused]] bool is_null_allowed) {
+/// @brief Recursive Negamax algorithm with Alpha-Beta pruning, Null-Move Pruning, and LMR.
+int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, bool is_null_allowed) {
+    if (ply < 64) {
+        pv_length_[ply] = ply;
+    }
+
     ++nodes_;
     if ((nodes_ & 2047) == 0) {
         check_time_limit();
@@ -151,6 +159,12 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, [[m
         if (board.is_fifty_move_rule() || board.is_draw_by_repetition(2)) {
             return Evaluator::DRAW_SCORE;
         }
+    }
+
+    // Check extension: if in check, search 1 ply deeper to resolve tactical check threats
+    bool in_check = board.in_check();
+    if (in_check && ply > 0) {
+        ++depth;
     }
 
     int orig_alpha = alpha;
@@ -170,13 +184,27 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, [[m
         return quiescence(board, alpha, beta, ply);
     }
 
+    // Null-Move Pruning (NMP):
+    // If not in check, null move allowed, depth >= 3, and side to move has pieces other than pawns
+    if (is_null_allowed && !in_check && ply > 0 && depth >= 3 && board.has_non_pawn_material(board.side_to_move())) {
+        int R = 2 + (depth > 6 ? 1 : 0);
+        board.make_null_move();
+        int null_score = -negamax(board, depth - 1 - R, ply + 1, -beta, -beta + 1, false);
+        board.undo_null_move();
+
+        if (stop_flag_) return 0;
+        if (null_score >= beta) {
+            return beta; // Fail-high cutoff without exploring full subtree
+        }
+    }
+
     // Generate legal moves
     std::vector<Move> legal_moves;
     MoveGen::generate_legal_moves(board, legal_moves);
 
     // Terminal position: checkmate or stalemate
     if (legal_moves.empty()) {
-        if (board.in_check()) {
+        if (in_check) {
             return -Evaluator::MATE_SCORE + ply; // Faster mates scored higher
         }
         return Evaluator::DRAW_SCORE;            // Stalemate
@@ -187,10 +215,29 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, [[m
 
     int best_score = -Evaluator::MATE_SCORE;
     Move best_move = NULL_MOVE;
+    int moves_searched = 0;
 
     for (const auto& m : legal_moves) {
         board.make_move(m);
-        int score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, true);
+        ++moves_searched;
+
+        int score;
+        // Late Move Reductions (LMR):
+        // Reduce depth on late quiet moves (non-captures, non-promotions, not in check)
+        if (moves_searched >= 4 && depth >= 3 && !m.is_capture() && !m.is_promotion() && !in_check) {
+            int reduction = 1;
+            if (moves_searched >= 8 && depth >= 5) {
+                reduction = 2;
+            }
+            score = -negamax(board, depth - 1 - reduction, ply + 1, -alpha - 1, -alpha, true);
+            // If reduced search fails high, re-search at full depth
+            if (score > alpha) {
+                score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, true);
+            }
+        } else {
+            score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, true);
+        }
+
         board.undo_move();
 
         if (stop_flag_) return 0;
@@ -202,6 +249,16 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, [[m
 
         if (score > alpha) {
             alpha = score;
+
+            // Update Triangular PV Table
+            if (ply < 64) {
+                pv_table_[ply][ply] = m;
+                for (int next_ply = ply + 1; next_ply < pv_length_[ply + 1] && next_ply < 64; ++next_ply) {
+                    pv_table_[ply][next_ply] = pv_table_[ply + 1][next_ply];
+                }
+                pv_length_[ply] = pv_length_[ply + 1];
+            }
+
             if (alpha >= beta) {
                 // Beta cutoff (fail-high): record killer move and history heuristic
                 if (!m.is_capture() && ply < 64) {
@@ -259,6 +316,7 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
     }
 
     Move best_overall_move = root_moves[0];
+    std::string best_overall_pv = best_overall_move.to_uci();
     int max_depth = std::min(limits.max_depth, 64);
 
     // 2. Iterative Deepening loop (depth 1, 2, 3...)
@@ -281,6 +339,13 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
             if (score > best_score) {
                 best_score = score;
                 iteration_best_move = m;
+
+                // Update root PV
+                pv_table_[0][0] = m;
+                for (int next_ply = 1; next_ply < pv_length_[1] && next_ply < 64; ++next_ply) {
+                    pv_table_[0][next_ply] = pv_table_[1][next_ply];
+                }
+                pv_length_[0] = pv_length_[1];
             }
             if (score > alpha) {
                 alpha = score;
@@ -295,17 +360,28 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
             best_overall_move = iteration_best_move;
         }
 
+        // Construct full Principal Variation string
+        std::string current_pv;
+        for (int i = 0; i < pv_length_[0] && i < 64; ++i) {
+            if (pv_table_[0][i].is_null()) break;
+            if (!current_pv.empty()) current_pv += " ";
+            current_pv += pv_table_[0][i].to_uci();
+        }
+        if (!current_pv.empty()) {
+            best_overall_pv = current_pv;
+        }
+
         auto now = std::chrono::steady_clock::now();
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time_).count();
         uint64_t nps = (elapsed_ms > 0) ? (nodes_ * 1000 / elapsed_ms) : 0;
 
-        // Output UCI search status line
+        // Output UCI search status line with full PV
         std::cout << "info depth " << current_depth
                   << " score cp " << best_score
                   << " time " << elapsed_ms
                   << " nodes " << nodes_
                   << " nps " << nps
-                  << " pv " << best_overall_move.to_uci()
+                  << " pv " << best_overall_pv
                   << std::endl;
 
         // Early break if guaranteed checkmate found

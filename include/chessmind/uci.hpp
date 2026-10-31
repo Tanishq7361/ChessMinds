@@ -21,6 +21,7 @@ private:
     void handle_ucinewgame();
     void handle_position(const std::string& line);
     void handle_go(const std::string& line);
+    void handle_bench(int depth = 6);
 
     Board board_;
     TranspositionTable tt_;

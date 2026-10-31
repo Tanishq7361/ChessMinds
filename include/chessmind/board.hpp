@@ -43,6 +43,17 @@ public:
     /// @brief Reverts the most recently executed move using the state history stack.
     void undo_move();
 
+    /// @brief Passes turn to the opponent without moving any piece (used for Null-Move Pruning).
+    void make_null_move();
+
+    /// @brief Reverts the null move.
+    void undo_null_move();
+
+    /// @brief Checks whether a side possesses non-pawn pieces (to avoid zugzwang risks in null-move pruning).
+    [[nodiscard]] bool has_non_pawn_material(Color c) const noexcept {
+        return (pieces_[c][KNIGHT] | pieces_[c][BISHOP] | pieces_[c][ROOK] | pieces_[c][QUEEN]) != 0;
+    }
+
     /// @brief Determines whether a square is under attack by any piece of `attacker_color`.
     [[nodiscard]] bool is_square_attacked(Square sq, Color attacker_color) const noexcept;
 

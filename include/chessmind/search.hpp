@@ -65,6 +65,10 @@ private:
 
     // History heuristic table: [color][from_sq][to_sq] (accumulates successful quiet moves)
     std::array<std::array<std::array<int, 64>, 64>, 2> history_{};
+
+    // Triangular PV (Principal Variation) table [ply][ply]
+    std::array<std::array<Move, 64>, 64> pv_table_{};
+    std::array<int, 64> pv_length_{};
 };
 
 } // namespace chessmind

@@ -17,6 +17,10 @@ ChessMinds implements the classical engine architecture combining **Way 3 (Alpha
 2. **Search Architecture (Way 3)**:
    - **Iterative Deepening** from depth 1 upwards.
    - **Negamax with Alpha-Beta Pruning**.
+   - **Null-Move Pruning (NMP)**: Bypasses subtrees when the position is commanding enough that passing a turn still maintains a fail-high cutoff.
+   - **Late Move Reductions (LMR)**: Dynamically reduces search depth on late non-tactical candidate moves, re-searching at full depth only on fail-highs.
+   - **Check Extension**: Deepens tactical search by 1 ply when in check.
+   - **Triangular Principal Variation (PV) Table**: Reconstructs and outputs the complete multi-ply best line of play.
    - **Quiescence Search**: Evaluates captures with delta pruning to eliminate the horizon effect.
    - **Move Ordering**:
      1. Transposition Table best move
@@ -162,6 +166,7 @@ The server automatically bridges HTTP requests to the compiled `chessmind.exe` e
 | `position fen <fen> [moves ...]` | *(silent)* | Sets up position from FEN string |
 | `go [wtime X] [btime Y] ...` | `info ...`<br>`bestmove <move>` | Searches current position within limits |
 | `stop` | `bestmove <move>` | Aborts search immediately and returns best move |
+| `bench [depth]` | `[BENCH] ...` | Runs 5 standard benchmark positions and reports NPS |
 | `quit` | *(exits process)* | Terminates engine |
 
 ---
