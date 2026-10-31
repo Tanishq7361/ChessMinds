@@ -109,19 +109,19 @@
       flex-direction: column;
       align-items: center;
       height: 520px;
-      width: 32px;
+      width: 36px;
       position: relative;
     }
 
     .vertical-eval-bar {
       height: 100%;
-      width: 24px;
-      background: #111827; /* Black side (top) */
-      border-radius: 6px;
+      width: 28px;
+      background: #18181b; /* Black side (top) */
+      border-radius: 8px;
       overflow: hidden;
       border: 2px solid var(--border);
       position: relative;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.45);
       display: flex;
       flex-direction: column;
       justify-content: flex-end;
@@ -131,26 +131,28 @@
       width: 100%;
       height: 50%; /* White side (bottom) */
       background: #f8fafc;
-      transition: height 0.35s ease;
-      box-shadow: 0 -2px 6px rgba(255,255,255,0.2);
+      transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s ease;
+      box-shadow: 0 -2px 6px rgba(0,0,0,0.3);
     }
 
     .eval-badge {
       position: absolute;
       width: 100%;
       text-align: center;
-      font-size: 11px;
+      font-size: 10.5px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
       font-weight: 800;
       letter-spacing: -0.02em;
       pointer-events: none;
       z-index: 2;
+      white-space: nowrap;
     }
     .eval-badge.white-score {
-      bottom: 6px;
+      bottom: 8px;
       color: #0f172a;
     }
     .eval-badge.black-score {
-      top: 6px;
+      top: 8px;
       color: #f8fafc;
     }
 
@@ -685,27 +687,31 @@
     updateEvalBar(0);
     document.getElementById("turnIndicator").innerText = "White to Move";
     fetchLegalMoves();
+    requestPositionEval();
   }
 
   function changeTheme(themeClass) {
     document.body.className = themeClass;
   }
 
-  function updateEvalBar(cp) {
-    // Sigmoid curve to scale -10 to +10 pawns into 5% to 95%
+  let currentEvalScore = 0;
+  let evalAbortController = null;
+
+  function updateEvalBar(score) {
+    currentEvalScore = score;
     let pct = 50;
     let scoreDisplay = "0.0";
 
-    if (Math.abs(cp) >= 29000) {
+    if (Math.abs(score) >= 25000) {
       // Checkmate score
-      const mateIn = 30000 - Math.abs(cp);
-      scoreDisplay = (cp > 0 ? "+M" : "-M") + Math.max(1, mateIn);
-      pct = cp > 0 ? 98 : 2;
+      const mateIn = Math.max(1, Math.round((30000 - Math.abs(score)) / 10));
+      scoreDisplay = (score > 0 ? "+M" : "-M") + mateIn;
+      pct = score > 0 ? 98 : 2;
     } else {
-      const pawns = cp / 100;
-      scoreDisplay = (pawns > 0 ? "+" : "") + pawns.toFixed(1);
-      // Smooth sigmoid curve
-      pct = 1 / (1 + Math.pow(10, -cp / 400)) * 100;
+      const pawns = score / 100;
+      scoreDisplay = (pawns >= 0 ? "+" : "") + pawns.toFixed(1);
+      // Smooth sigmoid curve mapping -1000cp .. +1000cp to 5% .. 95%
+      pct = 1 / (1 + Math.pow(10, -score / 400)) * 100;
       pct = Math.min(Math.max(pct, 5), 95);
     }
 
@@ -713,47 +719,122 @@
     const badgeWhite = document.getElementById("evalBadgeWhite");
     const badgeBlack = document.getElementById("evalBadgeBlack");
     const statScore = document.getElementById("statEvalScore");
-
-    statScore.innerText = scoreDisplay;
-
     const boardPill = document.getElementById("boardEvalScorePill");
     const boardAdv = document.getElementById("boardEvalAdvantage");
-    if (boardPill) boardPill.innerText = scoreDisplay;
+
+    if (statScore) statScore.innerText = scoreDisplay;
+
+    if (boardPill) {
+      boardPill.innerText = scoreDisplay;
+      if (score > 40) {
+        boardPill.style.color = "var(--accent)";
+      } else if (score < -40) {
+        boardPill.style.color = "var(--danger)";
+      } else {
+        boardPill.style.color = "var(--primary)";
+      }
+    }
+
     if (boardAdv) {
-      if (Math.abs(cp) >= 29000) {
-        boardAdv.innerText = cp > 0 ? "White has forced mate" : "Black has forced mate";
-      } else if (cp > 150) {
+      if (Math.abs(score) >= 25000) {
+        boardAdv.innerText = score > 0 ? "White has forced mate" : "Black has forced mate";
+      } else if (score > 150) {
         boardAdv.innerText = `White is winning (${scoreDisplay})`;
-      } else if (cp > 40) {
-        boardAdv.innerText = `White is better (${scoreDisplay})`;
-      } else if (cp < -150) {
+      } else if (score > 40) {
+        boardAdv.innerText = `White is slightly better (${scoreDisplay})`;
+      } else if (score < -150) {
         boardAdv.innerText = `Black is winning (${scoreDisplay})`;
-      } else if (cp < -40) {
-        boardAdv.innerText = `Black is better (${scoreDisplay})`;
+      } else if (score < -40) {
+        boardAdv.innerText = `Black is slightly better (${scoreDisplay})`;
       } else {
         boardAdv.innerText = "Equal position (0.0)";
       }
     }
 
-    if (isFlipped) {
-      fillElem.style.height = (100 - pct) + "%";
-      if (pct > 50) {
-        badgeBlack.innerText = scoreDisplay;
-        badgeWhite.innerText = "";
+    // Render vertical eval bar
+    if (fillElem && fillElem.parentElement) {
+      if (isFlipped) {
+        // Black is at bottom, White is at top
+        const blackPct = 100 - pct;
+        fillElem.style.height = blackPct + "%";
+        fillElem.style.background = "#18181b"; // Black fill at bottom
+        fillElem.parentElement.style.background = "#f8fafc"; // White background at top
+
+        if (pct < 50) {
+          // Black leads
+          badgeBlack.innerText = scoreDisplay;
+          badgeBlack.style.bottom = "8px";
+          badgeBlack.style.top = "auto";
+          badgeBlack.style.color = "#f8fafc";
+          badgeWhite.innerText = "";
+        } else {
+          // White leads
+          badgeWhite.innerText = scoreDisplay;
+          badgeWhite.style.top = "8px";
+          badgeWhite.style.bottom = "auto";
+          badgeWhite.style.color = "#0f172a";
+          badgeBlack.innerText = "";
+        }
       } else {
-        badgeWhite.innerText = scoreDisplay;
-        badgeBlack.innerText = "";
-      }
-    } else {
-      fillElem.style.height = pct + "%";
-      if (pct >= 50) {
-        badgeWhite.innerText = scoreDisplay;
-        badgeBlack.innerText = "";
-      } else {
-        badgeBlack.innerText = scoreDisplay;
-        badgeWhite.innerText = "";
+        // White is at bottom, Black is at top
+        fillElem.style.height = pct + "%";
+        fillElem.style.background = "#f8fafc"; // White fill at bottom
+        fillElem.parentElement.style.background = "#18181b"; // Black background at top
+
+        if (pct >= 50) {
+          // White leads
+          badgeWhite.innerText = scoreDisplay;
+          badgeWhite.style.bottom = "8px";
+          badgeWhite.style.top = "auto";
+          badgeWhite.style.color = "#0f172a";
+          badgeBlack.innerText = "";
+        } else {
+          // Black leads
+          badgeBlack.innerText = scoreDisplay;
+          badgeBlack.style.top = "8px";
+          badgeBlack.style.bottom = "auto";
+          badgeBlack.style.color = "#f8fafc";
+          badgeWhite.innerText = "";
+        }
       }
     }
+  }
+
+  function requestPositionEval() {
+    if (evalAbortController) {
+      evalAbortController.abort();
+    }
+    evalAbortController = new AbortController();
+
+    fetch("/api/evaluate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fen: "startpos",
+        moves: moveHistory,
+        depth: 6
+      }),
+      signal: evalAbortController.signal
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data && typeof data.score === "number") {
+        updateEvalBar(data.score);
+        if (data.pv) {
+          const pvElem = document.getElementById("statPv");
+          if (pvElem) pvElem.innerText = data.pv;
+        }
+        if (data.depth) {
+          const dElem = document.getElementById("statDepth");
+          if (dElem) dElem.innerText = data.depth;
+        }
+        if (data.nps) {
+          const nElem = document.getElementById("statNps");
+          if (nElem) nElem.innerText = data.nps.toLocaleString();
+        }
+      }
+    })
+    .catch(() => {});
   }
 
   function renderBoard() {
@@ -1135,6 +1216,7 @@
     updateMoveHistoryUI();
     updateFenUI();
     fetchLegalMoves();
+    requestPositionEval();
 
     // Auto-reply with ChessMinds if enabled
     if (document.getElementById("chkAutoEngine").checked && sideToMove === 'b') {
@@ -1266,6 +1348,7 @@
   function toggleFlip() {
     isFlipped = !isFlipped;
     renderBoard();
+    updateEvalBar(currentEvalScore);
   }
 
   function updateDepthLabel() {

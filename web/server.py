@@ -104,11 +104,19 @@ class EngineBridge:
                 "bestmove": None,
                 "depth": 0,
                 "score": 0,
+                "score_raw": 0,
                 "nodes": 0,
                 "nps": 0,
                 "time": 0,
                 "pv": ""
             }
+
+            # Determine whether it's Black's turn to search
+            is_black_turn = False
+            if fen and " b " in fen:
+                is_black_turn = True
+            elif moves and (len(moves) % 2 == 1):
+                is_black_turn = True
 
             while True:
                 line = self.process.stdout.readline()
@@ -120,8 +128,20 @@ class EngineBridge:
                     for i in range(len(parts)):
                         if parts[i] == "depth" and i + 1 < len(parts):
                             result["depth"] = int(parts[i + 1])
-                        elif parts[i] == "score" and i + 2 < len(parts) and parts[i + 1] == "cp":
-                            result["score"] = int(parts[i + 2])
+                        elif parts[i] == "score" and i + 2 < len(parts):
+                            if parts[i + 1] == "cp":
+                                raw = int(parts[i + 2])
+                                result["score_raw"] = raw
+                                result["score"] = -raw if is_black_turn else raw
+                                result["score_type"] = "cp"
+                            elif parts[i + 1] == "mate":
+                                mate_val = int(parts[i + 2])
+                                sign = 1 if mate_val > 0 else -1
+                                score_val = (30000 - abs(mate_val) * 10) * sign
+                                result["score_raw"] = score_val
+                                result["score"] = -score_val if is_black_turn else score_val
+                                result["mate"] = mate_val
+                                result["score_type"] = "mate"
                         elif parts[i] == "nodes" and i + 1 < len(parts):
                             result["nodes"] = int(parts[i + 1])
                         elif parts[i] == "nps" and i + 1 < len(parts):
@@ -195,6 +215,27 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
             movetime = data.get("movetime", None)
 
             response = bridge.query_move(fen=fen, moves=moves, depth=depth, movetime=movetime)
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode("utf-8"))
+
+        elif self.path == "/api/evaluate":
+            content_length = int(self.headers.get("Content-Length", 0))
+            post_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(post_data.decode("utf-8"))
+            except Exception as e:
+                self.send_error(400, f"Invalid JSON: {e}")
+                return
+
+            fen = data.get("fen", "startpos")
+            moves = data.get("moves", [])
+            depth = data.get("depth", 6)
+
+            response = bridge.query_move(fen=fen, moves=moves, depth=depth)
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
