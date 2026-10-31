@@ -184,9 +184,12 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
         else:
             super().do_GET()
 
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
 def run_server():
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("127.0.0.1", PORT), ChessRequestHandler) as httpd:
+    with ThreadedTCPServer(("127.0.0.1", PORT), ChessRequestHandler) as httpd:
         print(f"\n========================================================")
         print(f"  ChessMinds GUI Web Server running on:")
         print(f"  --> http://127.0.0.1:{PORT}")

@@ -6,21 +6,67 @@
   <title>ChessMinds - C++20 Engine Interface</title>
   <style>
     :root {
-      --bg: #0f172a;
-      --surface: #1e293b;
-      --surface-light: #334155;
-      --border: #475569;
+      --bg: #0b1120;
+      --surface: #151f32;
+      --surface-light: #223049;
+      --border: #334460;
       --text: #f8fafc;
       --text-muted: #94a3b8;
       --primary: #38bdf8;
       --primary-hover: #0284c7;
       --accent: #22c55e;
       --danger: #ef4444;
-      --sq-light: #e2e8f0;
-      --sq-dark: #64748b;
-      --sq-selected: #38bdf888;
-      --sq-last-move: #facc1555;
-      --sq-dest-hint: rgba(34, 197, 94, 0.4);
+
+      /* Sky & Sea Theme (Default) */
+      --sq-light-base: #b9d7ea;
+      --sq-light-grad: radial-gradient(circle at 35% 35%, #d4e9f7 0%, #b2d2e7 55%, #9bc2dc 100%);
+      --sq-dark-base: #1b4d79;
+      --sq-dark-grad: radial-gradient(circle at 65% 35%, #23659e 0%, #174872 60%, #113658 100%);
+      --coord-light: #184670;
+      --coord-dark: #c0ddf0;
+      --sq-selected: rgba(56, 189, 248, 0.45);
+      --sq-last-move: rgba(250, 204, 21, 0.35);
+      --sq-dest-hint: rgba(34, 197, 94, 0.45);
+    }
+
+    /* Theme: Classic Wood */
+    body.theme-classic-wood {
+      --sq-light-base: #f0d9b5;
+      --sq-light-grad: radial-gradient(circle at 35% 35%, #f8e8d0 0%, #eed5af 60%, #e5caa2 100%);
+      --sq-dark-base: #b58863;
+      --sq-dark-grad: radial-gradient(circle at 65% 35%, #c59771 0%, #ad7f5a 60%, #996c48 100%);
+      --coord-light: #b58863;
+      --coord-dark: #f0d9b5;
+    }
+
+    /* Theme: Emerald Green (Lichess/Chess.com style) */
+    body.theme-emerald-green {
+      --sq-light-base: #eaefd5;
+      --sq-light-grad: radial-gradient(circle at 35% 35%, #f4f8e3 0%, #e6eccf 60%, #d8e0be 100%);
+      --sq-dark-base: #759656;
+      --sq-dark-grad: radial-gradient(circle at 65% 35%, #84a663 0%, #6e8e4f 60%, #5d7c3f 100%);
+      --coord-light: #759656;
+      --coord-dark: #eaefd5;
+    }
+
+    /* Theme: Charcoal Slate */
+    body.theme-charcoal-slate {
+      --sq-light-base: #cbd5e1;
+      --sq-light-grad: radial-gradient(circle at 35% 35%, #e2e8f0 0%, #c4d0df 60%, #b3c2d3 100%);
+      --sq-dark-base: #475569;
+      --sq-dark-grad: radial-gradient(circle at 65% 35%, #56677f 0%, #404d5f 60%, #333e4e 100%);
+      --coord-light: #475569;
+      --coord-dark: #cbd5e1;
+    }
+
+    /* Theme: Midnight Cyber */
+    body.theme-midnight-neon {
+      --sq-light-base: #1e293b;
+      --sq-light-grad: radial-gradient(circle at 35% 35%, #334155 0%, #1e293b 70%, #172132 100%);
+      --sq-dark-base: #090e17;
+      --sq-dark-grad: radial-gradient(circle at 65% 35%, #111a29 0%, #080d16 60%, #03060a 100%);
+      --coord-light: #38bdf8;
+      --coord-dark: #0284c7;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -41,30 +87,82 @@
     .main-container {
       display: grid;
       grid-template-columns: auto 1fr;
-      gap: 24px;
+      gap: 28px;
       padding: 24px;
-      max-width: 1300px;
+      max-width: 1350px;
       margin: 0 auto;
       width: 100%;
       flex: 1;
+      align-items: start;
     }
 
-    /* Chessboard area */
-    .board-wrapper {
+    /* Chessboard with Vertical Evaluation Bar side by side */
+    .board-area {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+
+    /* Iconic Vertical Evaluation Bar */
+    .vertical-eval-wrapper {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
+      height: 520px;
+      width: 32px;
+      position: relative;
     }
 
+    .vertical-eval-bar {
+      height: 100%;
+      width: 24px;
+      background: #111827; /* Black side (top) */
+      border-radius: 6px;
+      overflow: hidden;
+      border: 2px solid var(--border);
+      position: relative;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+
+    .vertical-eval-fill {
+      width: 100%;
+      height: 50%; /* White side (bottom) */
+      background: #f8fafc;
+      transition: height 0.35s ease;
+      box-shadow: 0 -2px 6px rgba(255,255,255,0.2);
+    }
+
+    .eval-badge {
+      position: absolute;
+      width: 100%;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .eval-badge.white-score {
+      bottom: 6px;
+      color: #0f172a;
+    }
+    .eval-badge.black-score {
+      top: 6px;
+      color: #f8fafc;
+    }
+
+    /* Board container */
     .board-container {
       position: relative;
       width: 520px;
       height: 520px;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.6), 0 8px 12px -6px rgba(0, 0, 0, 0.4);
       border-radius: 8px;
       overflow: hidden;
-      border: 3px solid #334155;
+      border: 3px solid #1e293b;
       display: grid;
       grid-template-columns: repeat(8, 1fr);
       grid-template-rows: repeat(8, 1fr);
@@ -79,13 +177,21 @@
       justify-content: center;
       position: relative;
       cursor: pointer;
+      transition: background 0.15s ease;
     }
 
-    .square.light { background-color: var(--sq-light); }
-    .square.dark { background-color: var(--sq-dark); }
-    .square.selected { background-color: var(--sq-selected) !important; }
-    .square.last-move { background-color: var(--sq-last-move) !important; }
-    .square.check { background-color: rgba(239, 68, 68, 0.6) !important; }
+    .square.light {
+      background-color: var(--sq-light-base);
+      background-image: var(--sq-light-grad);
+    }
+    .square.dark {
+      background-color: var(--sq-dark-base);
+      background-image: var(--sq-dark-grad);
+    }
+
+    .square.selected { background: var(--sq-selected) !important; }
+    .square.last-move { background: var(--sq-last-move) !important; }
+    .square.check { background: rgba(239, 68, 68, 0.65) !important; }
 
     .hint-dot {
       width: 18px;
@@ -94,6 +200,7 @@
       border-radius: 50%;
       position: absolute;
       pointer-events: none;
+      box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
     }
 
     .hint-capture {
@@ -105,25 +212,28 @@
       pointer-events: none;
     }
 
+    /* Piece Image with high definition rendering and shadow */
     .piece-img {
-      width: 85%;
-      height: 85%;
+      width: 88%;
+      height: 88%;
       object-fit: contain;
       pointer-events: none;
+      filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.4));
       transition: transform 0.1s ease;
     }
 
-    /* Rank & File coordinates */
+    /* Rank & File Coordinates */
     .coord {
       position: absolute;
       font-size: 11px;
-      font-weight: 700;
+      font-weight: 800;
       pointer-events: none;
+      opacity: 0.9;
     }
     .coord-file { bottom: 2px; right: 4px; }
     .coord-rank { top: 2px; left: 4px; }
-    .square.light .coord { color: var(--sq-dark); }
-    .square.dark .coord { color: var(--sq-light); }
+    .square.light .coord { color: var(--coord-light); }
+    .square.dark .coord { color: var(--coord-dark); }
 
     /* Control panel & telemetry */
     .sidebar {
@@ -140,8 +250,8 @@
     }
 
     .card-title {
-      font-size: 0.9rem;
-      font-weight: 600;
+      font-size: 0.85rem;
+      font-weight: 700;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -166,41 +276,9 @@
     .stat-label { font-size: 0.75rem; color: var(--text-muted); }
     .stat-val { font-size: 1.15rem; font-weight: 700; color: var(--primary); margin-top: 2px; }
 
-    /* Eval bar */
-    .eval-container {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-top: 8px;
-    }
-
-    .eval-bar-bg {
-      flex: 1;
-      height: 14px;
-      background: #1e293b;
-      border-radius: 999px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-      display: flex;
-    }
-
-    .eval-bar-fill {
-      height: 100%;
-      background: var(--primary);
-      width: 50%;
-      transition: width 0.4s ease;
-    }
-
-    .eval-score-text {
-      font-size: 0.9rem;
-      font-weight: 700;
-      min-width: 55px;
-      text-align: right;
-    }
-
     /* Button and controls */
     .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
-    button {
+    button, select {
       background: var(--surface-light);
       border: 1px solid var(--border);
       color: var(--text);
@@ -214,13 +292,18 @@
       gap: 6px;
       transition: all 0.15s ease;
     }
-    button:hover { background: var(--primary); color: #000; border-color: var(--primary); }
+    button:hover, select:hover { background: var(--primary); color: #000; border-color: var(--primary); }
     button.primary { background: var(--primary); color: #000; border-color: var(--primary); }
     button.primary:hover { background: var(--primary-hover); }
 
+    select {
+      outline: none;
+      padding: 6px 12px;
+    }
+
     /* Move notation box */
     .move-history {
-      height: 140px;
+      height: 130px;
       overflow-y: auto;
       background: var(--bg);
       border: 1px solid var(--border);
@@ -270,7 +353,7 @@
     @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
   </style>
 </head>
-<body>
+<body class="theme-sky-sea">
 
 <header>
   <div class="brand">
@@ -278,21 +361,46 @@
       <path d="M19 22H5V20H19V22M17 18H7V17L9 14V11C9 9.34 10.34 8 12 8S15 9.34 15 11V14L17 17V18M13 3H11V5H9V7H15V5H13V3Z"/>
     </svg>
     ChessMinds
-    <span class="badge">C++20 Native Engine</span>
+    <span class="badge">C++20 Engine</span>
   </div>
-  <div class="status-banner">
-    <div id="engineStatusDot" class="status-indicator"></div>
-    <span id="engineStatusText">Engine Ready</span>
+
+  <!-- Theme selector right in header -->
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">Theme:</span>
+    <select id="themeSelect" onchange="changeTheme(this.value)">
+      <option value="theme-sky-sea" selected>Sky & Sea (Ocean)</option>
+      <option value="theme-classic-wood">Classic Wood</option>
+      <option value="theme-emerald-green">Emerald Green</option>
+      <option value="theme-charcoal-slate">Charcoal Slate</option>
+      <option value="theme-midnight-neon">Midnight Cyber</option>
+    </select>
+
+    <div class="status-banner">
+      <div id="engineStatusDot" class="status-indicator"></div>
+      <span id="engineStatusText">Engine Ready</span>
+    </div>
   </div>
 </header>
 
 <div class="main-container">
-  <!-- Left: Chessboard & Board Navigation -->
-  <div class="board-wrapper">
-    <div class="board-container" id="chessboard"></div>
+  <!-- Left: Vertical Eval Bar + Chessboard + Controls -->
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+    <div class="board-area">
+      <!-- Vertical Evaluation Bar beside board (like Lichess/Chess.com) -->
+      <div class="vertical-eval-wrapper" title="Evaluation Bar">
+        <div class="vertical-eval-bar">
+          <div id="evalBadgeBlack" class="eval-badge black-score"></div>
+          <div id="evalBarFill" class="vertical-eval-fill"></div>
+          <div id="evalBadgeWhite" class="eval-badge white-score">+0.0</div>
+        </div>
+      </div>
+
+      <!-- Main Chessboard -->
+      <div class="board-container" id="chessboard"></div>
+    </div>
 
     <!-- Navigation & board buttons -->
-    <div class="btn-group" style="width: 100%; justify-content: center;">
+    <div class="btn-group" style="width: 100%; justify-content: center; margin-top: 4px;">
       <button onclick="navFirst()" title="First Move">&lt;&lt;</button>
       <button onclick="navPrev()" title="Previous Move">&lt;</button>
       <button onclick="navNext()" title="Next Move">&gt;</button>
@@ -311,15 +419,11 @@
         <span id="turnIndicator" style="color: var(--primary);">White to Move</span>
       </div>
 
-      <div class="eval-container">
-        <span class="stat-label">EVAL:</span>
-        <div class="eval-bar-bg">
-          <div id="evalBarFill" class="eval-bar-fill"></div>
+      <div class="telemetry-grid">
+        <div class="stat-box">
+          <div class="stat-label">Evaluation Score</div>
+          <div id="statEvalScore" class="stat-val" style="color: var(--accent);">+0.00</div>
         </div>
-        <span id="evalScoreText" class="eval-score-text">0.00</span>
-      </div>
-
-      <div class="telemetry-grid" style="margin-top: 12px;">
         <div class="stat-box">
           <div class="stat-label">Search Depth</div>
           <div id="statDepth" class="stat-val">-</div>
@@ -329,16 +433,12 @@
           <div id="statNps" class="stat-val">-</div>
         </div>
         <div class="stat-box">
-          <div class="stat-label">Nodes Searched</div>
-          <div id="statNodes" class="stat-val">-</div>
-        </div>
-        <div class="stat-box">
           <div class="stat-label">Engine Best Move</div>
           <div id="statBestMove" class="stat-val" style="color: var(--accent);">-</div>
         </div>
       </div>
 
-      <div style="margin-top: 10px; font-size: 0.8rem; color: var(--text-muted);">
+      <div style="margin-top: 12px; font-size: 0.8rem; color: var(--text-muted); background: var(--bg); padding: 8px; border-radius: 6px; border: 1px solid var(--border);">
         <strong>Engine Line (PV):</strong>
         <span id="statPv" style="font-family: monospace; color: var(--text);">None</span>
       </div>
@@ -380,23 +480,23 @@
 </div>
 
 <script>
-  // Chess Piece SVGs (Wikipedia/cburnett clean vector graphics)
-  const PIECE_SVGS = {
-    P: `<svg viewBox="0 0 45 45"><path d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`,
-    N: `<svg viewBox="0 0 45 45"><path d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21" fill="#fff" stroke="#000" stroke-width="1.5"/><path d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`,
-    B: `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.5"><g fill="#fff"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.354.49-2.323.47-3-.5 1.354-1.94 3-2 3-2z"/><path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g><path d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5" stroke-linejoin="miter"/></g></svg>`,
-    R: `<svg viewBox="0 0 45 45"><g fill="#fff" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 39h27v-3H9v3zm3-3v-4.5h21V36H12zm2-4.5v-13h17v13H14zM11 14h23l-2-6H13l-2 6z"/><path d="M12 9v3m5-3v3m6-3v3m5-3v3m5-3v3" stroke-width="1"/></g></svg>`,
-    Q: `<svg viewBox="0 0 45 45"><g fill="#fff" stroke="#000" stroke-width="1.5" stroke-linecap="round"><path d="M9 26c8.5-1.5 21-1.5 27 0l2-12-7 11-4-14-4 14-7-11 2 12z"/><path d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 2-1 .5-2.5 0 0 0-1.5-1.5-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"/><circle cx="6" cy="12" r="2"/><circle cx="14" cy="9" r="2"/><circle cx="22.5" cy="8" r="2"/><circle cx="31" cy="9" r="2"/><circle cx="39" cy="12" r="2"/></g></svg>`,
-    K: `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round"><path d="M22.5 11.63V6M20 8h5" stroke-linejoin="miter"/><path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" fill="#fff" stroke-linecap="butt"/><path d="M11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-1-1 8-6 4-3-2.5-6-1-8.5 2-2.5-3-5.5-4.5-8.5-2-5 4-2-5-6-4-3 6 6 10.5 6 10.5v7z" fill="#fff"/><path d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0"/></g></svg>`,
-    p: `<svg viewBox="0 0 45 45"><path d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z" fill="#333" stroke="#fff" stroke-width="1.5"/></svg>`,
-    n: `<svg viewBox="0 0 45 45"><path d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21" fill="#333" stroke="#fff" stroke-width="1.5"/><path d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3" fill="#333" stroke="#fff" stroke-width="1.5"/></svg>`,
-    b: `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#fff" stroke-width="1.5"><g fill="#333"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.354.49-2.323.47-3-.5 1.354-1.94 3-2 3-2z"/><path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g><path d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5" stroke-linejoin="miter"/></g></svg>`,
-    r: `<svg viewBox="0 0 45 45"><g fill="#333" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 39h27v-3H9v3zm3-3v-4.5h21V36H12zm2-4.5v-13h17v13H14zM11 14h23l-2-6H13l-2 6z"/><path d="M12 9v3m5-3v3m6-3v3m5-3v3m5-3v3" stroke-width="1"/></g></svg>`,
-    q: `<svg viewBox="0 0 45 45"><g fill="#333" stroke="#fff" stroke-width="1.5" stroke-linecap="round"><path d="M9 26c8.5-1.5 21-1.5 27 0l2-12-7 11-4-14-4 14-7-11 2 12z"/><path d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 2-1 .5-2.5 0 0 0-1.5-1.5-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"/><circle cx="6" cy="12" r="2"/><circle cx="14" cy="9" r="2"/><circle cx="22.5" cy="8" r="2"/><circle cx="31" cy="9" r="2"/><circle cx="39" cy="12" r="2"/></g></svg>`,
-    k: `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#fff" stroke-width="1.5" stroke-linecap="round"><path d="M22.5 11.63V6M20 8h5" stroke-linejoin="miter"/><path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" fill="#333" stroke-linecap="butt"/><path d="M11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-1-1 8-6 4-3-2.5-6-1-8.5 2-2.5-3-5.5-4.5-8.5-2-5 4-2-5-6-4-3 6 6 10.5 6 10.5v7z" fill="#333"/><path d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0"/></g></svg>`
+  // High-Resolution Custom Piece Images added by user in /public/
+  const PIECE_IMAGES = {
+    'P': '/public/wp.png',
+    'N': '/public/wN.png',
+    'B': '/public/wB.png',
+    'R': '/public/wR.png',
+    'Q': '/public/wQ.png',
+    'K': '/public/wK.png',
+    'p': '/public/bp.png',
+    'n': '/public/bN.png',
+    'b': '/public/bB.png',
+    'r': '/public/bR.png',
+    'q': '/public/bQ.png',
+    'k': '/public/bK.png'
   };
 
-  // Web Audio synthesizer for piece moves
+  // Web Audio synthesizer for moves
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   function playSound(type) {
     if (!audioCtx) return;
@@ -427,7 +527,7 @@
   let board = [];
   let isFlipped = false;
   let selectedSq = null;
-  let moveHistory = []; // array of UCI strings e.g. ["e2e4", "e7e5"]
+  let moveHistory = [];
   let historyPly = 0;
   let sideToMove = 'w';
   let lastMove = null;
@@ -451,7 +551,58 @@
     renderBoard();
     updateMoveHistoryUI();
     updateFenUI();
+    updateEvalBar(0);
     document.getElementById("turnIndicator").innerText = "White to Move";
+  }
+
+  function changeTheme(themeClass) {
+    document.body.className = themeClass;
+  }
+
+  function updateEvalBar(cp) {
+    // Sigmoid curve to scale -10 to +10 pawns into 5% to 95%
+    let pct = 50;
+    let scoreDisplay = "0.0";
+
+    if (Math.abs(cp) >= 29000) {
+      // Checkmate score
+      const mateIn = 30000 - Math.abs(cp);
+      scoreDisplay = (cp > 0 ? "+M" : "-M") + Math.max(1, mateIn);
+      pct = cp > 0 ? 98 : 2;
+    } else {
+      const pawns = cp / 100;
+      scoreDisplay = (pawns > 0 ? "+" : "") + pawns.toFixed(1);
+      // Smooth sigmoid curve
+      pct = 1 / (1 + Math.pow(10, -cp / 400)) * 100;
+      pct = Math.min(Math.max(pct, 5), 95);
+    }
+
+    const fillElem = document.getElementById("evalBarFill");
+    const badgeWhite = document.getElementById("evalBadgeWhite");
+    const badgeBlack = document.getElementById("evalBadgeBlack");
+    const statScore = document.getElementById("statEvalScore");
+
+    statScore.innerText = scoreDisplay;
+
+    if (isFlipped) {
+      fillElem.style.height = (100 - pct) + "%";
+      if (pct > 50) {
+        badgeBlack.innerText = scoreDisplay;
+        badgeWhite.innerText = "";
+      } else {
+        badgeWhite.innerText = scoreDisplay;
+        badgeBlack.innerText = "";
+      }
+    } else {
+      fillElem.style.height = pct + "%";
+      if (pct >= 50) {
+        badgeWhite.innerText = scoreDisplay;
+        badgeBlack.innerText = "";
+      } else {
+        badgeBlack.innerText = scoreDisplay;
+        badgeWhite.innerText = "";
+      }
+    }
   }
 
   function renderBoard() {
@@ -489,11 +640,13 @@
         }
 
         const piece = board[row][col];
-        if (piece && PIECE_SVGS[piece]) {
-          const pDiv = document.createElement("div");
-          pDiv.className = "piece-img";
-          pDiv.innerHTML = PIECE_SVGS[piece];
-          sqDiv.appendChild(pDiv);
+        if (piece && PIECE_IMAGES[piece]) {
+          const img = document.createElement("img");
+          img.className = "piece-img";
+          img.src = PIECE_IMAGES[piece];
+          img.alt = piece;
+          img.draggable = false;
+          sqDiv.appendChild(img);
         }
 
         sqDiv.addEventListener("click", () => handleSquareClick(sqName, row, col));
@@ -522,7 +675,7 @@
       const toSq = sqName;
       const uciMove = fromSq + toSq;
 
-      // Attempt move
+      // Apply player move
       applyMove(uciMove);
       selectedSq = null;
     }
@@ -593,17 +746,12 @@
       setEngineStatus("Engine Ready", false);
       if (data.bestmove) {
         document.getElementById("statDepth").innerText = data.depth;
-        document.getElementById("statNps").innerText = (data.nps).toLocaleString();
-        document.getElementById("statNodes").innerText = (data.nodes).toLocaleString();
+        document.getElementById("statNps").innerText = (data.nps || 0).toLocaleString();
         document.getElementById("statBestMove").innerText = data.bestmove;
         document.getElementById("statPv").innerText = data.pv || data.bestmove;
 
-        // Update eval bar (-10 to +10 range)
-        const cp = data.score;
-        const pawns = (cp / 100).toFixed(2);
-        document.getElementById("evalScoreText").innerText = (pawns > 0 ? "+" : "") + pawns;
-        const fillPct = Math.min(Math.max((cp + 1000) / 2000 * 100, 5), 95);
-        document.getElementById("evalBarFill").style.width = fillPct + "%";
+        // Update the vertical evaluation bar
+        updateEvalBar(data.score || 0);
 
         applyMove(data.bestmove);
       }
@@ -647,7 +795,6 @@
   }
 
   function updateFenUI() {
-    // Generate FEN string
     let fen = "";
     for (let r = 0; r < 8; ++r) {
       let empty = 0;
@@ -688,7 +835,6 @@
   function undoMove() {
     if (moveHistory.length === 0) return;
     moveHistory.pop();
-    // Replay moves from start
     const saved = [...moveHistory];
     initBoard();
     saved.forEach(m => applyMove(m));
@@ -696,7 +842,7 @@
 
   function navFirst() { while (moveHistory.length > 0) undoMove(); }
   function navPrev() { undoMove(); }
-  function navNext() { /* Future PGN replay */ }
+  function navNext() { /* PGN navigation */ }
   function navLast() { /* Latest */ }
 
   // Startup
@@ -705,4 +851,3 @@
 
 </body>
 </html>
-
