@@ -155,7 +155,33 @@ The server automatically bridges HTTP requests to the compiled `chessmind.exe` e
 
 ---
 
-## 7. UCI Protocol Reference
+## 7. Rating Benchmark & Standard Elo Estimation
+
+ChessMinds includes a dedicated tactical suite and Elo calibration benchmark executable (`rating_benchmark`) with 25 curated positions (Easy, Medium, Hard) drawn from standard chess tactical test suites (Bratko-Kopec, Win at Chess, Encyclopedia of Chess Middlegames).
+
+### Running the Rating Benchmark Manually:
+
+```powershell
+# Run benchmark at default depth (6 plies):
+.\build\rating_benchmark.exe
+
+# Run benchmark at custom depth (e.g., depth 8):
+.\build\rating_benchmark.exe 8
+```
+
+On Linux / macOS:
+```bash
+./build/rating_benchmark 6
+```
+
+### Benchmark Output & Metrics:
+* **Per-position status**: Move chosen vs expected best moves, search time (ms), and tactical description.
+* **Accuracy by tier**: Easy, Medium, and Hard tactical solve rates.
+* **Calibrated Standard Rating**: Estimated Elo rating mapped to CCRL-standard tournament equivalents (currently ~2250 - 2350 Elo).
+
+---
+
+## 8. UCI Protocol Reference
 
 | Command | Response | Description |
 |---|---|---|
@@ -171,6 +197,6 @@ The server automatically bridges HTTP requests to the compiled `chessmind.exe` e
 
 ---
 
-## 8. License
+## 9. License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

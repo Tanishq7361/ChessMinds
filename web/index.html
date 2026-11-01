@@ -460,6 +460,93 @@
       font-size: 0.9rem;
       color: var(--text-muted);
     }
+
+    /* Setup Mode Piece Palette */
+    .setup-palette {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      align-items: center;
+      justify-content: center;
+      margin-top: 6px;
+      width: 100%;
+    }
+    .setup-palette .palette-piece {
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface-light);
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .setup-palette .palette-piece:hover {
+      border-color: var(--primary);
+      background: var(--primary);
+      transform: scale(1.1);
+    }
+    .setup-palette .palette-piece.selected {
+      border-color: var(--accent);
+      background: rgba(34, 197, 94, 0.25);
+      box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+    }
+    .setup-palette .palette-piece img {
+      width: 34px;
+      height: 34px;
+      object-fit: contain;
+      pointer-events: none;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+    }
+    .setup-palette .palette-eraser {
+      font-size: 20px;
+      color: var(--text);
+      user-select: none;
+    }
+    .setup-palette .palette-divider {
+      width: 1px;
+      height: 34px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+    .setup-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 6px;
+      width: 100%;
+      justify-content: center;
+    }
+    .setup-controls .turn-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .setup-controls .turn-toggle select {
+      padding: 4px 8px;
+      font-size: 0.8rem;
+    }
+    .setup-banner {
+      padding: 6px 14px;
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--accent);
+      text-align: center;
+      width: 100%;
+    }
   </style>
 </head>
 <body class="theme-sky-sea">
@@ -524,7 +611,47 @@
       <button onclick="navNext()" title="Next Move">&gt;</button>
       <button onclick="navLast()" title="Latest Move">&gt;&gt;</button>
       <button onclick="toggleFlip()" title="Flip Board">Flip</button>
+      <button onclick="toggleSetupMode()" id="btnSetupMode" style="border-color: var(--accent); color: var(--accent);" title="Manually place or change pieces on board">Setup Board</button>
       <button onclick="newGame()" class="primary">New Game</button>
+    </div>
+
+    <!-- Board Setup Palette & Controls (Piece Editor) -->
+    <div id="setupContainer" style="display: none; width: 100%; flex-direction: column; align-items: center; gap: 8px;">
+      <div class="setup-banner">Board Setup Mode: Select a piece below, then click any square to place or erase it.</div>
+      <div class="setup-palette" id="setupPalette">
+        <!-- White Pieces -->
+        <div class="palette-piece selected" data-piece="P" title="White Pawn" onclick="selectPalettePiece('P')"><img src="public/wp.png" alt="P"></div>
+        <div class="palette-piece" data-piece="N" title="White Knight" onclick="selectPalettePiece('N')"><img src="public/wN.png" alt="N"></div>
+        <div class="palette-piece" data-piece="B" title="White Bishop" onclick="selectPalettePiece('B')"><img src="public/wB.png" alt="B"></div>
+        <div class="palette-piece" data-piece="R" title="White Rook" onclick="selectPalettePiece('R')"><img src="public/wR.png" alt="R"></div>
+        <div class="palette-piece" data-piece="Q" title="White Queen" onclick="selectPalettePiece('Q')"><img src="public/wQ.png" alt="Q"></div>
+        <div class="palette-piece" data-piece="K" title="White King" onclick="selectPalettePiece('K')"><img src="public/wK.png" alt="K"></div>
+        <div class="palette-divider"></div>
+        <!-- Black Pieces -->
+        <div class="palette-piece" data-piece="p" title="Black Pawn" onclick="selectPalettePiece('p')"><img src="public/bp.png" alt="p"></div>
+        <div class="palette-piece" data-piece="n" title="Black Knight" onclick="selectPalettePiece('n')"><img src="public/bN.png" alt="n"></div>
+        <div class="palette-piece" data-piece="b" title="Black Bishop" onclick="selectPalettePiece('b')"><img src="public/bB.png" alt="b"></div>
+        <div class="palette-piece" data-piece="r" title="Black Rook" onclick="selectPalettePiece('r')"><img src="public/bR.png" alt="r"></div>
+        <div class="palette-piece" data-piece="q" title="Black Queen" onclick="selectPalettePiece('q')"><img src="public/bQ.png" alt="q"></div>
+        <div class="palette-piece" data-piece="k" title="Black King" onclick="selectPalettePiece('k')"><img src="public/bK.png" alt="k"></div>
+        <div class="palette-divider"></div>
+        <!-- Eraser -->
+        <div class="palette-piece palette-eraser" data-piece="" title="Eraser (Clear Square)" onclick="selectPalettePiece('')">✕</div>
+      </div>
+
+      <div class="setup-controls">
+        <div class="turn-toggle">
+          <span>Side to move:</span>
+          <select id="setupTurnSelect" onchange="sideToMove = this.value; updateFenUI();">
+            <option value="w" selected>White to move</option>
+            <option value="b">Black to move</option>
+          </select>
+        </div>
+        <button onclick="setupClearBoard()">Clear Board</button>
+        <button onclick="setupResetStandard()">Starting Pos</button>
+        <button onclick="setupDone()" class="primary">Done / Play</button>
+        <button onclick="setupCancel()">Cancel</button>
+      </div>
     </div>
   </div>
 
@@ -590,8 +717,9 @@
     <div class="card">
       <div class="card-title">Position (FEN)</div>
       <div class="fen-box">
-        <input type="text" id="fenInput" readonly>
-        <button onclick="copyFen()">Copy</button>
+        <input type="text" id="fenInput" placeholder="Paste or view FEN">
+        <button onclick="loadFenFromInput()" title="Load FEN onto board">Load</button>
+        <button onclick="copyFen()" title="Copy FEN to clipboard">Copy</button>
       </div>
     </div>
   </div>
@@ -683,6 +811,11 @@
   let legalMoves = []; // populated by engine for hint dots
   let pendingPromoFrom = null;
   let pendingPromoTo = null;
+  let baseFen = "startpos"; // Starting position (startpos or custom FEN)
+
+  // Board Setup / Edit Mode State
+  let setupMode = false;
+  let selectedPalettePiece = 'P';
 
   // Async & Cancellation Controllers
   let currentEvalScore = 0;
@@ -711,6 +844,16 @@
       legalMovesAbortController = null;
     }
     setEngineStatus("Engine Ready", false);
+
+    baseFen = "startpos";
+    setupMode = false;
+    const setupCont = document.getElementById("setupContainer");
+    if (setupCont) setupCont.style.display = "none";
+    const setupBtn = document.getElementById("btnSetupMode");
+    if (setupBtn) {
+      setupBtn.innerText = "Setup Board";
+      setupBtn.style.background = "";
+    }
 
     board = [
       ['r','n','b','q','k','b','n','r'],
@@ -858,7 +1001,7 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        fen: "startpos",
+        fen: baseFen,
         moves: moveHistory,
         depth: 6
       }),
@@ -966,7 +1109,7 @@
 
   // --- Drag-and-Drop ---
   function handleDragStart(e, sqName, r, c) {
-    if (gameOver) return;
+    if (gameOver || setupMode) return;
     const piece = board[r][c];
     if (!piece) return;
     const isWhitePiece = piece === piece.toUpperCase();
@@ -1014,10 +1157,17 @@
     // Find the square under cursor
     const elem = document.elementFromPoint(e.clientX, e.clientY);
     const sqElem = elem ? elem.closest('.square') : null;
-    const toSq = sqElem ? sqElem.dataset.square : null;
+    let toSq = sqElem ? sqElem.dataset.square : null;
 
     if (toSq && toSq !== dragFromSq) {
-      const fromSq = dragFromSq;
+      let fromSq = dragFromSq;
+
+      // Castling drag-to-rook convenience
+      if (fromSq === 'e1' && toSq === 'h1') toSq = 'g1';
+      else if (fromSq === 'e1' && toSq === 'a1') toSq = 'c1';
+      else if (fromSq === 'e8' && toSq === 'h8') toSq = 'g8';
+      else if (fromSq === 'e8' && toSq === 'a8') toSq = 'c8';
+
       const uciBase = fromSq + toSq;
       dragFromSq = null;
       dragPiece = null;
@@ -1056,6 +1206,15 @@
 
   function handleSquareClick(sqName, r, c) {
     if (gameOver) return;
+
+    // If in Board Setup Mode, clicking places or erases the selected palette piece
+    if (setupMode) {
+      board[r][c] = selectedPalettePiece;
+      renderBoard();
+      updateFenUI();
+      return;
+    }
+
     if (!selectedSq) {
       const piece = board[r][c];
       if (!piece) return;
@@ -1073,11 +1232,26 @@
         return;
       }
 
-      // Check if clicking own piece to re-select
+      // Check if clicking own piece to re-select OR castle by clicking friendly Rook
       const clickedPiece = board[r][c];
       if (clickedPiece) {
         const isWhiteClicked = clickedPiece === clickedPiece.toUpperCase();
         if ((sideToMove === 'w' && isWhiteClicked) || (sideToMove === 'b' && !isWhiteClicked)) {
+          // Castling convenience: Clicking King then clicking friendly Rook
+          if (selectedSq === 'e1' && sqName === 'h1') {
+            const m = legalMoves.find(x => x.startsWith('e1g1'));
+            if (m) { applyMove(m); selectedSq = null; return; }
+          } else if (selectedSq === 'e1' && sqName === 'a1') {
+            const m = legalMoves.find(x => x.startsWith('e1c1'));
+            if (m) { applyMove(m); selectedSq = null; return; }
+          } else if (selectedSq === 'e8' && sqName === 'h8') {
+            const m = legalMoves.find(x => x.startsWith('e8g8'));
+            if (m) { applyMove(m); selectedSq = null; return; }
+          } else if (selectedSq === 'e8' && sqName === 'a8') {
+            const m = legalMoves.find(x => x.startsWith('e8c8'));
+            if (m) { applyMove(m); selectedSq = null; return; }
+          }
+
           selectedSq = sqName;
           fetchLegalMoves();
           renderBoard();
@@ -1086,7 +1260,14 @@
       }
 
       const fromSq = selectedSq;
-      const toSq = sqName;
+      let toSq = sqName;
+
+      // Also map King clicked then Rook clicked if not caught above
+      if (fromSq === 'e1' && toSq === 'h1') toSq = 'g1';
+      else if (fromSq === 'e1' && toSq === 'a1') toSq = 'c1';
+      else if (fromSq === 'e8' && toSq === 'h8') toSq = 'g8';
+      else if (fromSq === 'e8' && toSq === 'a8') toSq = 'c8';
+
       const uciBase = fromSq + toSq;
 
       // Validate legality against engine legal moves
@@ -1185,7 +1366,7 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        fen: "startpos",
+        fen: baseFen,
         moves: moveHistory
       }),
       signal: legalMovesAbortController.signal
@@ -1294,7 +1475,7 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        fen: "startpos",
+        fen: baseFen,
         moves: moveHistory,
         depth: depth
       })
@@ -1400,7 +1581,21 @@
       if (empty > 0) fen += empty;
       if (r < 7) fen += "/";
     }
-    fen += ` ${sideToMove} - - 0 1`;
+
+    // Auto-detect available castling rights based on piece placement
+    let castling = "";
+    if (board[7][4] === 'K') {
+      if (board[7][7] === 'R') castling += "K";
+      if (board[7][0] === 'R') castling += "Q";
+    }
+    if (board[0][4] === 'k') {
+      if (board[0][7] === 'r') castling += "k";
+      if (board[0][0] === 'r') castling += "q";
+    }
+    if (!castling) castling = "-";
+
+    const ep = enPassantSq || "-";
+    fen += ` ${sideToMove} ${castling} ${ep} 0 1`;
     document.getElementById("fenInput").value = fen;
   }
 
@@ -1408,6 +1603,163 @@
     const fen = document.getElementById("fenInput").value;
     navigator.clipboard.writeText(fen);
     alert("FEN copied to clipboard!");
+  }
+
+  // Helper to parse FEN into 8x8 board array
+  function loadFenIntoBoard(fen) {
+    if (!fen || fen === "startpos") {
+      board = [
+        ['r','n','b','q','k','b','n','r'],
+        ['p','p','p','p','p','p','p','p'],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['P','P','P','P','P','P','P','P'],
+        ['R','N','B','Q','K','B','N','R']
+      ];
+      sideToMove = 'w';
+      return true;
+    }
+    const parts = fen.trim().split(/\s+/);
+    if (!parts[0]) return false;
+    const rows = parts[0].split('/');
+    if (rows.length !== 8) return false;
+
+    const newBoard = [];
+    for (let r = 0; r < 8; r++) {
+      newBoard[r] = [];
+      let col = 0;
+      for (const ch of rows[r]) {
+        if (ch >= '1' && ch <= '8') {
+          const count = parseInt(ch);
+          for (let k = 0; k < count; k++) newBoard[r][col++] = '';
+        } else {
+          newBoard[r][col++] = ch;
+        }
+      }
+      if (col !== 8) return false;
+    }
+    board = newBoard;
+    sideToMove = (parts[1] === 'b') ? 'b' : 'w';
+    return true;
+  }
+
+  function loadFenFromInput() {
+    const input = document.getElementById("fenInput").value.trim();
+    if (!input) return;
+    if (!loadFenIntoBoard(input)) {
+      alert("Invalid FEN format. Please enter a valid 8-rank FEN string.");
+      return;
+    }
+    baseFen = input;
+    moveHistory = [];
+    historyPly = 0;
+    lastMove = null;
+    selectedSq = null;
+    enPassantSq = null;
+    gameOver = false;
+    document.getElementById("turnIndicator").innerText = (sideToMove === 'w') ? "White to Move" : "Black to Move";
+    renderBoard();
+    updateMoveHistoryUI();
+    updateFenUI();
+    fetchLegalMoves();
+    requestPositionEval();
+  }
+
+  // --- Board Setup Mode Functions (Piece Editor) ---
+  function toggleSetupMode() {
+    setupMode = !setupMode;
+    const setupCont = document.getElementById("setupContainer");
+    const setupBtn = document.getElementById("btnSetupMode");
+    selectedSq = null;
+    legalMoves = [];
+
+    if (setupMode) {
+      if (engineTimer) { clearTimeout(engineTimer); engineTimer = null; }
+      if (evalAbortController) { evalAbortController.abort(); evalAbortController = null; }
+      if (legalMovesAbortController) { legalMovesAbortController.abort(); legalMovesAbortController = null; }
+
+      setupCont.style.display = "flex";
+      setupBtn.innerText = "Exit Setup";
+      setupBtn.style.background = "var(--accent)";
+      setupBtn.style.color = "#000";
+      selectPalettePiece('P');
+      document.getElementById("setupTurnSelect").value = sideToMove;
+    } else {
+      setupCont.style.display = "none";
+      setupBtn.innerText = "Setup Board";
+      setupBtn.style.background = "";
+      setupBtn.style.color = "";
+      fetchLegalMoves();
+      requestPositionEval();
+    }
+    renderBoard();
+  }
+
+  function selectPalettePiece(p) {
+    selectedPalettePiece = p;
+    document.querySelectorAll(".setup-palette .palette-piece").forEach(el => {
+      if (el.dataset.piece === p) el.classList.add("selected");
+      else el.classList.remove("selected");
+    });
+  }
+
+  function setupClearBoard() {
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) board[r][c] = '';
+    }
+    renderBoard();
+    updateFenUI();
+  }
+
+  function setupResetStandard() {
+    loadFenIntoBoard("startpos");
+    sideToMove = 'w';
+    document.getElementById("setupTurnSelect").value = 'w';
+    renderBoard();
+    updateFenUI();
+  }
+
+  function setupDone() {
+    // Validate that both kings exist
+    let hasWhiteKing = false;
+    let hasBlackKing = false;
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        if (board[r][c] === 'K') hasWhiteKing = true;
+        if (board[r][c] === 'k') hasBlackKing = true;
+      }
+    }
+
+    if (!hasWhiteKing || !hasBlackKing) {
+      alert("Invalid position: A chess board must contain both a White King (K) and a Black King (k).");
+      return;
+    }
+
+    sideToMove = document.getElementById("setupTurnSelect").value;
+    updateFenUI();
+    baseFen = document.getElementById("fenInput").value;
+
+    moveHistory = [];
+    historyPly = 0;
+    lastMove = null;
+    selectedSq = null;
+    gameOver = false;
+
+    toggleSetupMode(); // exits setup mode
+    document.getElementById("turnIndicator").innerText = (sideToMove === 'w') ? "White to Move" : "Black to Move";
+    updateMoveHistoryUI();
+    fetchLegalMoves();
+    requestPositionEval();
+  }
+
+  function setupCancel() {
+    loadFenIntoBoard(baseFen);
+    toggleSetupMode();
+    updateFenUI();
+    fetchLegalMoves();
+    requestPositionEval();
   }
 
   function toggleFlip() {
@@ -1476,18 +1828,8 @@
 
     const savedMoves = [...moveHistory];
 
-    // Reset board array to initial standard setup quietly
-    board = [
-      ['r','n','b','q','k','b','n','r'],
-      ['p','p','p','p','p','p','p','p'],
-      ['','','','','','','',''],
-      ['','','','','','','',''],
-      ['','','','','','','',''],
-      ['','','','','','','',''],
-      ['P','P','P','P','P','P','P','P'],
-      ['R','N','B','Q','K','B','N','R']
-    ];
-    sideToMove = 'w';
+    // Reset board array to base position quietly
+    loadFenIntoBoard(baseFen);
     moveHistory = [];
     historyPly = 0;
     lastMove = null;

@@ -379,7 +379,285 @@ int Evaluator::evaluate(const Board& board) noexcept {
         }
     }
 
-    // 6. Tapered Evaluation: Blend Middlegame and Endgame scores based on game phase
+    // 6. Piece Mobility (Knights, Bishops, Rooks, Queens)
+    Bitboard all_occ = board.all_occupied();
+    Bitboard w_pawn_attacks = 0;
+    Bitboard b_pawn_attacks = 0;
+    Bitboard temp_wp = w_pawns;
+    while (temp_wp) {
+        Square sq = pop_lsb(temp_wp);
+        w_pawn_attacks |= bitboards::pawn_attacks(WHITE, sq);
+    }
+    Bitboard temp_bp = b_pawns;
+    while (temp_bp) {
+        Square sq = pop_lsb(temp_bp);
+        b_pawn_attacks |= bitboards::pawn_attacks(BLACK, sq);
+    }
+
+    // Knights mobility
+    Bitboard w_knights = board.piece_bb(WHITE, KNIGHT);
+    while (w_knights) {
+        Square sq = pop_lsb(w_knights);
+        Bitboard mob = bitboards::knight_attacks(sq) & ~board.color_bb(WHITE) & ~b_pawn_attacks;
+        int count = pop_count(mob);
+        mg_score += count * 4;
+        eg_score += count * 4;
+
+        // Knight outpost bonus: ranks 4-6, defended by friendly pawn, cannot be attacked by enemy pawn
+        int r = square_rank(sq);
+        if (r >= 3 && r <= 5) {
+            Bitboard friendly_defenders = bitboards::pawn_attacks(BLACK, sq) & w_pawns;
+            if (friendly_defenders) {
+                int f = square_file(sq);
+                Bitboard enemy_pawn_threat = 0;
+                for (int rank_ahead = r + 1; rank_ahead < 8; ++rank_ahead) {
+                    if (f > 0) enemy_pawn_threat |= (bitboards::FILE_A << (f - 1)) & (bitboards::RANK_1 << (rank_ahead * 8));
+                    if (f < 7) enemy_pawn_threat |= (bitboards::FILE_A << (f + 1)) & (bitboards::RANK_1 << (rank_ahead * 8));
+                }
+                if (!(b_pawns & enemy_pawn_threat)) {
+                    mg_score += 25;
+                    eg_score += 15;
+                }
+            }
+        }
+    }
+
+    Bitboard b_knights = board.piece_bb(BLACK, KNIGHT);
+    while (b_knights) {
+        Square sq = pop_lsb(b_knights);
+        Bitboard mob = bitboards::knight_attacks(sq) & ~board.color_bb(BLACK) & ~w_pawn_attacks;
+        int count = pop_count(mob);
+        mg_score -= count * 4;
+        eg_score -= count * 4;
+
+        // Black Knight outpost: ranks 3-5 (indices 4 down to 2)
+        int r = square_rank(sq);
+        if (r >= 2 && r <= 4) {
+            Bitboard friendly_defenders = bitboards::pawn_attacks(WHITE, sq) & b_pawns;
+            if (friendly_defenders) {
+                int f = square_file(sq);
+                Bitboard enemy_pawn_threat = 0;
+                for (int rank_ahead = 0; rank_ahead < r; ++rank_ahead) {
+                    if (f > 0) enemy_pawn_threat |= (bitboards::FILE_A << (f - 1)) & (bitboards::RANK_1 << (rank_ahead * 8));
+                    if (f < 7) enemy_pawn_threat |= (bitboards::FILE_A << (f + 1)) & (bitboards::RANK_1 << (rank_ahead * 8));
+                }
+                if (!(w_pawns & enemy_pawn_threat)) {
+                    mg_score -= 25;
+                    eg_score -= 15;
+                }
+            }
+        }
+    }
+
+    // Bishops mobility
+    Bitboard w_bishops = board.piece_bb(WHITE, BISHOP);
+    while (w_bishops) {
+        Square sq = pop_lsb(w_bishops);
+        Bitboard mob = bitboards::bishop_attacks(sq, all_occ) & ~board.color_bb(WHITE) & ~b_pawn_attacks;
+        int count = pop_count(mob);
+        mg_score += count * 4;
+        eg_score += count * 4;
+    }
+
+    Bitboard b_bishops = board.piece_bb(BLACK, BISHOP);
+    while (b_bishops) {
+        Square sq = pop_lsb(b_bishops);
+        Bitboard mob = bitboards::bishop_attacks(sq, all_occ) & ~board.color_bb(BLACK) & ~w_pawn_attacks;
+        int count = pop_count(mob);
+        mg_score -= count * 4;
+        eg_score -= count * 4;
+    }
+
+    // Rooks on 7th rank and connected rooks
+    Bitboard w_r = board.piece_bb(WHITE, ROOK);
+    if (pop_count(w_r) >= 2) {
+        Square r1 = pop_lsb(w_r);
+        Square r2 = pop_lsb(w_r);
+        if ((square_rank(r1) == square_rank(r2) && !(bitboards::rook_attacks(r1, all_occ) & square_bb(r2))) == 0 &&
+            (bitboards::rook_attacks(r1, all_occ) & square_bb(r2))) {
+            mg_score += 15;
+            eg_score += 10;
+        }
+    }
+    w_r = board.piece_bb(WHITE, ROOK);
+    while (w_r) {
+        Square sq = pop_lsb(w_r);
+        int r = square_rank(sq);
+        if (r == 6) { // 7th rank
+            if (square_rank(board.king_square(BLACK)) == 7 || (b_pawns & bitboards::RANK_7)) {
+                mg_score += 30;
+                eg_score += 40;
+            }
+        }
+        Bitboard mob = bitboards::rook_attacks(sq, all_occ) & ~board.color_bb(WHITE);
+        int count = pop_count(mob);
+        mg_score += count * 2;
+        eg_score += count * 2;
+    }
+
+    Bitboard b_r = board.piece_bb(BLACK, ROOK);
+    if (pop_count(b_r) >= 2) {
+        Square r1 = pop_lsb(b_r);
+        Square r2 = pop_lsb(b_r);
+        if (bitboards::rook_attacks(r1, all_occ) & square_bb(r2)) {
+            mg_score -= 15;
+            eg_score -= 10;
+        }
+    }
+    b_r = board.piece_bb(BLACK, ROOK);
+    while (b_r) {
+        Square sq = pop_lsb(b_r);
+        int r = square_rank(sq);
+        if (r == 1) { // 2nd rank for Black
+            if (square_rank(board.king_square(WHITE)) == 0 || (w_pawns & bitboards::RANK_2)) {
+                mg_score -= 30;
+                eg_score -= 40;
+            }
+        }
+        Bitboard mob = bitboards::rook_attacks(sq, all_occ) & ~board.color_bb(BLACK);
+        int count = pop_count(mob);
+        mg_score -= count * 2;
+        eg_score -= count * 2;
+    }
+
+    // Queens mobility
+    Bitboard w_queens = board.piece_bb(WHITE, QUEEN);
+    while (w_queens) {
+        Square sq = pop_lsb(w_queens);
+        Bitboard mob = bitboards::queen_attacks(sq, all_occ) & ~board.color_bb(WHITE);
+        int count = pop_count(mob);
+        mg_score += count * 1;
+        eg_score += count * 2;
+    }
+    Bitboard b_queens = board.piece_bb(BLACK, QUEEN);
+    while (b_queens) {
+        Square sq = pop_lsb(b_queens);
+        Bitboard mob = bitboards::queen_attacks(sq, all_occ) & ~board.color_bb(BLACK);
+        int count = pop_count(mob);
+        mg_score -= count * 1;
+        eg_score -= count * 2;
+    }
+
+    // 7. King Ring Attack & Danger Evaluation (Middlegame King Pressure)
+    if (game_phase >= 8) { // Only evaluate in Opening and Middlegame
+        // White attacking Black's King
+        Square b_ksq = board.king_square(BLACK);
+        if (b_ksq != SQ_NONE) {
+            Bitboard b_ring = bitboards::king_attacks(b_ksq);
+            int attack_units = 0;
+            int attackers_count = 0;
+
+            // Knights
+            Bitboard knights = board.piece_bb(WHITE, KNIGHT);
+            while (knights) {
+                Square sq = pop_lsb(knights);
+                if (bitboards::knight_attacks(sq) & b_ring) {
+                    attack_units += 2;
+                    attackers_count++;
+                }
+            }
+            // Bishops
+            Bitboard bishops = board.piece_bb(WHITE, BISHOP);
+            while (bishops) {
+                Square sq = pop_lsb(bishops);
+                if (bitboards::bishop_attacks(sq, all_occ) & b_ring) {
+                    attack_units += 2;
+                    attackers_count++;
+                }
+            }
+            // Rooks
+            Bitboard rooks = board.piece_bb(WHITE, ROOK);
+            while (rooks) {
+                Square sq = pop_lsb(rooks);
+                if (bitboards::rook_attacks(sq, all_occ) & b_ring) {
+                    attack_units += 3;
+                    attackers_count++;
+                }
+            }
+            // Queen
+            Bitboard queens = board.piece_bb(WHITE, QUEEN);
+            while (queens) {
+                Square sq = pop_lsb(queens);
+                if (bitboards::queen_attacks(sq, all_occ) & b_ring) {
+                    attack_units += 4;
+                    attackers_count++;
+                }
+            }
+
+            if (attackers_count >= 2) {
+                mg_score += attack_units * attack_units * 3;
+            }
+        }
+
+        // Black attacking White's King
+        Square w_ksq = board.king_square(WHITE);
+        if (w_ksq != SQ_NONE) {
+            Bitboard w_ring = bitboards::king_attacks(w_ksq);
+            int attack_units = 0;
+            int attackers_count = 0;
+
+            Bitboard knights = board.piece_bb(BLACK, KNIGHT);
+            while (knights) {
+                Square sq = pop_lsb(knights);
+                if (bitboards::knight_attacks(sq) & w_ring) {
+                    attack_units += 2;
+                    attackers_count++;
+                }
+            }
+            Bitboard bishops = board.piece_bb(BLACK, BISHOP);
+            while (bishops) {
+                Square sq = pop_lsb(bishops);
+                if (bitboards::bishop_attacks(sq, all_occ) & w_ring) {
+                    attack_units += 2;
+                    attackers_count++;
+                }
+            }
+            Bitboard rooks = board.piece_bb(BLACK, ROOK);
+            while (rooks) {
+                Square sq = pop_lsb(rooks);
+                if (bitboards::rook_attacks(sq, all_occ) & w_ring) {
+                    attack_units += 3;
+                    attackers_count++;
+                }
+            }
+            Bitboard queens = board.piece_bb(BLACK, QUEEN);
+            while (queens) {
+                Square sq = pop_lsb(queens);
+                if (bitboards::queen_attacks(sq, all_occ) & w_ring) {
+                    attack_units += 4;
+                    attackers_count++;
+                }
+            }
+
+            if (attackers_count >= 2) {
+                mg_score -= attack_units * attack_units * 3;
+            }
+        }
+    }
+
+    // 8. Opening Piece Development Incentives
+    if (game_phase >= 20) {
+        if (board.piece_at(SQ_B1) == W_KNIGHT) mg_score -= 15;
+        if (board.piece_at(SQ_G1) == W_KNIGHT) mg_score -= 15;
+        if (board.piece_at(SQ_C1) == W_BISHOP) mg_score -= 15;
+        if (board.piece_at(SQ_F1) == W_BISHOP) mg_score -= 15;
+
+        if (board.piece_at(SQ_B8) == B_KNIGHT) mg_score += 15;
+        if (board.piece_at(SQ_G8) == B_KNIGHT) mg_score += 15;
+        if (board.piece_at(SQ_C8) == B_BISHOP) mg_score += 15;
+        if (board.piece_at(SQ_F8) == B_BISHOP) mg_score += 15;
+    }
+
+    // 9. Tempo Bonus: slight initiative bonus for side to move
+    if (board.side_to_move() == WHITE) {
+        mg_score += 10;
+        eg_score += 5;
+    } else {
+        mg_score -= 10;
+        eg_score -= 5;
+    }
+
+    // 10. Tapered Evaluation: Blend Middlegame and Endgame scores based on game phase
     int phase = std::clamp(game_phase, 0, TOTAL_PHASE);
     int eval = (mg_score * phase + eg_score * (TOTAL_PHASE - phase)) / TOTAL_PHASE;
 

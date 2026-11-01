@@ -96,3 +96,14 @@ target_link_libraries(benchmark_suite
         chessmind_warnings
 )
 
+# Standard Rating Benchmark target
+add_executable(rating_benchmark
+    benchmarks/rating_benchmark.cpp
+)
+
+target_link_libraries(rating_benchmark
+    PRIVATE
+        chessmind_core
+        chessmind_warnings
+)
+

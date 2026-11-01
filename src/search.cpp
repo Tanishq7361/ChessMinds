@@ -125,6 +125,18 @@ int Searcher::quiescence(Board& board, int alpha, int beta, int ply) {
             continue;
         }
 
+        // Fast SEE capture safety: skip losing captures (e.g. Queen/Rook taking a pawn defended by a pawn)
+        Piece victim = board.piece_at(m.to);
+        Piece attacker = board.piece_at(m.from);
+        if (victim != EMPTY && !m.is_promotion()) {
+            if (MVV_LVA_VALUES[type_of(attacker)] > MVV_LVA_VALUES[type_of(victim)] + 200) {
+                Color them = ~board.side_to_move();
+                if (bitboards::pawn_attacks(~them, m.to) & board.piece_bb(them, PAWN)) {
+                    continue; // Skip suicidal sacrifice in quiescence
+                }
+            }
+        }
+
         board.make_move(m);
         int score = -quiescence(board, -beta, -alpha, ply + 1);
         board.undo_move();
@@ -179,6 +191,13 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
         tt_move = tt_.probe_move(board.zobrist_hash());
     }
 
+    // Internal Iterative Deepening (IID): if no TT move at depth >= 4, do a shallow search
+    // to populate the transposition table with a good move for optimal alpha-beta ordering.
+    if (tt_move.is_null() && depth >= 4) {
+        negamax(board, depth - 2, ply, alpha, beta, false);
+        tt_move = tt_.probe_move(board.zobrist_hash());
+    }
+
     // Transition to quiescence search at leaf nodes
     if (depth <= 0) {
         return quiescence(board, alpha, beta, ply);
@@ -230,6 +249,13 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
     int moves_searched = 0;
 
     for (const auto& m : legal_moves) {
+        // Late Move Pruning (LMP): near leaf nodes, prune quiet moves after searching the most promising candidates
+        if (depth <= 3 && !in_check && !m.is_capture() && !m.is_promotion()) {
+            if (moves_searched >= (4 + 4 * depth)) {
+                continue;
+            }
+        }
+
         // Futility Pruning (FP): Skip quiet moves with no prospect of exceeding alpha near leaf nodes
         if (moves_searched > 0 && depth <= 2 && !in_check && !m.is_capture() && !m.is_promotion()) {
             if (static_eval + 120 * depth <= alpha) {

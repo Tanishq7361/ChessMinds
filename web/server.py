@@ -125,9 +125,9 @@ class EngineBridge:
             # Determine whether it's Black's turn to search
             is_black_turn = False
             if fen and " b " in fen:
-                is_black_turn = True
-            elif moves and (len(moves) % 2 == 1):
-                is_black_turn = True
+                is_black_turn = (len(moves) % 2 == 0) if moves else True
+            else:
+                is_black_turn = (len(moves) % 2 == 1) if moves else False
 
             while True:
                 line = self.process.stdout.readline()
