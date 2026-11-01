@@ -20,6 +20,11 @@ namespace chessmind {
     return static_cast<Square>(std::countr_zero(bb));
 }
 
+/// @brief Returns the index of the most significant set bit (MSB).
+[[nodiscard]] constexpr Square msb(Bitboard bb) noexcept {
+    return static_cast<Square>(63 - std::countl_zero(bb));
+}
+
 /// @brief Extracts and clears the least significant set bit from `bb`, returning its Square index.
 inline Square pop_lsb(Bitboard& bb) noexcept {
     Square sq = lsb(bb);

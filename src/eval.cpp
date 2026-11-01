@@ -283,7 +283,103 @@ int Evaluator::evaluate(const Board& board) noexcept {
         }
     }
 
-    // 4. Tapered Evaluation: Blend Middlegame and Endgame scores based on game phase
+    // 4. Rook Activity: Open and Semi-Open Files
+    Bitboard w_rooks = board.piece_bb(WHITE, ROOK);
+    while (w_rooks) {
+        Square sq = pop_lsb(w_rooks);
+        int f = square_file(sq);
+        Bitboard file_mask = bitboards::FILE_A << f;
+        if (!(w_pawns & file_mask)) {
+            if (!(b_pawns & file_mask)) {
+                // Fully open file (no pawns at all)
+                mg_score += 25;
+                eg_score += 15;
+            } else {
+                // Semi-open file (only opponent pawns)
+                mg_score += 15;
+                eg_score += 10;
+            }
+        }
+    }
+
+    Bitboard b_rooks = board.piece_bb(BLACK, ROOK);
+    while (b_rooks) {
+        Square sq = pop_lsb(b_rooks);
+        int f = square_file(sq);
+        Bitboard file_mask = bitboards::FILE_A << f;
+        if (!(b_pawns & file_mask)) {
+            if (!(w_pawns & file_mask)) {
+                // Fully open file (no pawns at all)
+                mg_score -= 25;
+                eg_score -= 15;
+            } else {
+                // Semi-open file (only opponent pawns)
+                mg_score -= 15;
+                eg_score -= 10;
+            }
+        }
+    }
+
+    // 5. King Safety: Pawn Shield Defenses in Middlegame
+    // White King Shield
+    Square w_king_sq = board.king_square(WHITE);
+    int w_king_f = square_file(w_king_sq);
+    int w_king_r = square_rank(w_king_sq);
+    if (w_king_r <= 1) {
+        if (w_king_f >= 5) {
+            // Kingside castled (f, g, h files)
+            for (int f = 5; f <= 7; ++f) {
+                Bitboard file_pawns = w_pawns & (bitboards::FILE_A << f);
+                if (!file_pawns) {
+                    mg_score -= 20; // Open file directly into the castled king
+                } else {
+                    int lowest_pawn_rank = square_rank(lsb(file_pawns));
+                    if (lowest_pawn_rank > 2) {
+                        mg_score -= 10 * (lowest_pawn_rank - 1); // Advanced shield weakness
+                    }
+                }
+            }
+        } else if (w_king_f <= 2) {
+            // Queenside castled (a, b, c files)
+            for (int f = 0; f <= 2; ++f) {
+                Bitboard file_pawns = w_pawns & (bitboards::FILE_A << f);
+                if (!file_pawns) {
+                    mg_score -= 15;
+                }
+            }
+        }
+    }
+
+    // Black King Shield
+    Square b_king_sq = board.king_square(BLACK);
+    int b_king_f = square_file(b_king_sq);
+    int b_king_r = square_rank(b_king_sq);
+    if (b_king_r >= 6) {
+        if (b_king_f >= 5) {
+            // Kingside castled (f, g, h files)
+            for (int f = 5; f <= 7; ++f) {
+                Bitboard file_pawns = b_pawns & (bitboards::FILE_A << f);
+                if (!file_pawns) {
+                    mg_score += 20; // Open file directly into Black's castled king
+                } else {
+                    int highest_pawn_rank = square_rank(msb(file_pawns));
+                    if (highest_pawn_rank < 5) {
+                        mg_score += 10 * (6 - highest_pawn_rank); // Advanced shield weakness
+                    }
+                }
+            }
+        } else if (b_king_f <= 2) {
+            // Queenside castled (a, b, c files)
+            for (int f = 0; f <= 2; ++f) {
+                Bitboard file_pawns = b_pawns & (bitboards::FILE_A << f);
+                if (!file_pawns) {
+                    mg_score += 15;
+                }
+            }
+        }
+    }
+
+    // 6. Tapered Evaluation: Blend Middlegame and Endgame scores based on game phase
     int phase = std::clamp(game_phase, 0, TOTAL_PHASE);
     int eval = (mg_score * phase + eg_score * (TOTAL_PHASE - phase)) / TOTAL_PHASE;
 

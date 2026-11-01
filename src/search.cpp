@@ -184,6 +184,18 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
         return quiescence(board, alpha, beta, ply);
     }
 
+    // Static evaluation used for pruning heuristics
+    int static_eval = Evaluator::evaluate(board);
+
+    // Reverse Futility Pruning (RFP / Static Null Move Pruning):
+    // At shallow depths, if static evaluation is well above beta, prune early without searching moves.
+    if (!in_check && ply > 0 && depth <= 3 && std::abs(beta) < Evaluator::MATE_SCORE) {
+        int rfp_margin = 75 * depth;
+        if (static_eval - rfp_margin >= beta) {
+            return beta;
+        }
+    }
+
     // Null-Move Pruning (NMP):
     // If not in check, null move allowed, depth >= 3, and side to move has pieces other than pawns
     if (is_null_allowed && !in_check && ply > 0 && depth >= 3 && board.has_non_pawn_material(board.side_to_move())) {
@@ -218,24 +230,42 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
     int moves_searched = 0;
 
     for (const auto& m : legal_moves) {
+        // Futility Pruning (FP): Skip quiet moves with no prospect of exceeding alpha near leaf nodes
+        if (moves_searched > 0 && depth <= 2 && !in_check && !m.is_capture() && !m.is_promotion()) {
+            if (static_eval + 120 * depth <= alpha) {
+                continue;
+            }
+        }
+
         board.make_move(m);
         ++moves_searched;
 
         int score;
-        // Late Move Reductions (LMR):
-        // Reduce depth on late quiet moves (non-captures, non-promotions, not in check)
-        if (moves_searched >= 4 && depth >= 3 && !m.is_capture() && !m.is_promotion() && !in_check) {
-            int reduction = 1;
-            if (moves_searched >= 8 && depth >= 5) {
-                reduction = 2;
+        // Principal Variation Search (PVS) with Late Move Reductions (LMR)
+        if (moves_searched == 1) {
+            // First move: search with full [alpha, beta] window
+            score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, true);
+        } else {
+            // Subsequent moves: null-window scout search with possible LMR
+            int reduction = 0;
+            if (moves_searched >= 4 && depth >= 3 && !m.is_capture() && !m.is_promotion() && !in_check) {
+                reduction = 1;
+                if (moves_searched >= 8 && depth >= 5) {
+                    reduction = 2;
+                }
             }
+
             score = -negamax(board, depth - 1 - reduction, ply + 1, -alpha - 1, -alpha, true);
-            // If reduced search fails high, re-search at full depth
-            if (score > alpha) {
+
+            // Re-search at full depth with null-window if reduced search fails high
+            if (reduction > 0 && score > alpha) {
+                score = -negamax(board, depth - 1, ply + 1, -alpha - 1, -alpha, true);
+            }
+
+            // If scout search fails high (score between alpha and beta), re-search with full window
+            if (score > alpha && score < beta) {
                 score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, true);
             }
-        } else {
-            score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, true);
         }
 
         board.undo_move();
@@ -317,38 +347,74 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
 
     Move best_overall_move = root_moves[0];
     std::string best_overall_pv = best_overall_move.to_uci();
+    int best_overall_score = 0;
     int max_depth = std::min(limits.max_depth, 64);
 
     // 2. Iterative Deepening loop (depth 1, 2, 3...)
     for (int current_depth = 1; current_depth <= max_depth; ++current_depth) {
         Move iteration_best_move = NULL_MOVE;
-        int alpha = -Evaluator::MATE_SCORE;
-        int beta = Evaluator::MATE_SCORE;
-
         order_moves(board, root_moves, best_overall_move, 0);
 
         int best_score = -Evaluator::MATE_SCORE;
 
-        for (const auto& m : root_moves) {
-            board.make_move(m);
-            int score = -negamax(board, current_depth - 1, 1, -beta, -alpha, true);
-            board.undo_move();
+        // Aspiration Windows: Search with a narrow window around previous score for depth >= 4
+        int alpha = -Evaluator::MATE_SCORE;
+        int beta = Evaluator::MATE_SCORE;
+        int delta = 35;
+
+        if (current_depth >= 4 && std::abs(best_overall_score) < Evaluator::MATE_SCORE - 100) {
+            alpha = std::max(-Evaluator::MATE_SCORE, best_overall_score - delta);
+            beta = std::min(Evaluator::MATE_SCORE, best_overall_score + delta);
+        }
+
+        while (true) {
+            best_score = -Evaluator::MATE_SCORE;
+            int orig_alpha = alpha;
+
+            for (size_t i = 0; i < root_moves.size(); ++i) {
+                const auto& m = root_moves[i];
+                board.make_move(m);
+
+                int score;
+                // Root PVS
+                if (i == 0) {
+                    score = -negamax(board, current_depth - 1, 1, -beta, -alpha, true);
+                } else {
+                    score = -negamax(board, current_depth - 1, 1, -alpha - 1, -alpha, true);
+                    if (score > alpha && score < beta) {
+                        score = -negamax(board, current_depth - 1, 1, -beta, -alpha, true);
+                    }
+                }
+
+                board.undo_move();
+
+                if (stop_flag_) break;
+
+                if (score > best_score) {
+                    best_score = score;
+                    iteration_best_move = m;
+
+                    // Update root PV
+                    pv_table_[0][0] = m;
+                    for (int next_ply = 1; next_ply < pv_length_[1] && next_ply < 64; ++next_ply) {
+                        pv_table_[0][next_ply] = pv_table_[1][next_ply];
+                    }
+                    pv_length_[0] = pv_length_[1];
+                }
+                if (score > alpha) {
+                    alpha = score;
+                }
+            }
 
             if (stop_flag_) break;
 
-            if (score > best_score) {
-                best_score = score;
-                iteration_best_move = m;
-
-                // Update root PV
-                pv_table_[0][0] = m;
-                for (int next_ply = 1; next_ply < pv_length_[1] && next_ply < 64; ++next_ply) {
-                    pv_table_[0][next_ply] = pv_table_[1][next_ply];
-                }
-                pv_length_[0] = pv_length_[1];
-            }
-            if (score > alpha) {
-                alpha = score;
+            // Check if score fell outside aspiration window
+            if (best_score <= orig_alpha && orig_alpha > -Evaluator::MATE_SCORE) {
+                alpha = -Evaluator::MATE_SCORE;
+            } else if (best_score >= beta && beta < Evaluator::MATE_SCORE) {
+                beta = Evaluator::MATE_SCORE;
+            } else {
+                break; // Score is within window or window is already fully open
             }
         }
 
@@ -358,6 +424,7 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
 
         if (!iteration_best_move.is_null()) {
             best_overall_move = iteration_best_move;
+            best_overall_score = best_score;
         }
 
         // Construct full Principal Variation string
