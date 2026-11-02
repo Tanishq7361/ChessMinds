@@ -107,3 +107,14 @@ target_link_libraries(rating_benchmark
         chessmind_warnings
 )
 
+# Automated Baseline Game Simulation target
+add_executable(test_game_simulation
+    tests/test_game_simulation.cpp
+)
+
+target_link_libraries(test_game_simulation
+    PRIVATE
+        chessmind_core
+        chessmind_warnings
+)
+

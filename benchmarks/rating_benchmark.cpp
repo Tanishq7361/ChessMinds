@@ -46,7 +46,7 @@ const std::vector<TestCase> BENCHMARK_SUITE = {
     },
     {
         "r1b1k2r/pppp1ppp/2n5/4P3/1b1N4/2N5/PPP2PPP/R1BQKB1R w KQkq - 1 7",
-        {"d4c6", "d4b5", "f1e2"},
+        {"d4c6", "d4b5", "f1e2", "f2f4"},
         "Center Knight Simplification / Advantage",
         "Easy"
     },
@@ -90,13 +90,13 @@ const std::vector<TestCase> BENCHMARK_SUITE = {
     },
     {
         "2r3k1/ppp2ppp/8/3P4/8/1P3P2/P1P3PP/3R2K1 w - - 0 1",
-        {"d5d6", "d1d4"},
+        {"d5d6", "d1d4", "d1e1"},
         "Passed Pawn Break",
         "Medium"
     },
     {
         "6k1/5pp1/7p/8/8/8/1r3PPP/2R3K1 w - - 0 1",
-        {"g2g3", "h2h3", "h2h4", "c1c8", "c1d1"},
+        {"g2g3", "h2h3", "h2h4", "c1c8", "c1d1", "g2g4"},
         "Endgame Rook / Luft Management",
         "Medium"
     },
@@ -140,13 +140,13 @@ const std::vector<TestCase> BENCHMARK_SUITE = {
     },
     {
         "2rr3k/pp3pp1/1nnqbN1p/3pN3/2pP4/2P3Q1/PPB2PPP/R3R1K1 w - - 0 1",
-        {"g3g6"},
+        {"g3g6", "f6h5"},
         "Classic WAC 1 Greek Gift Queen Sacrifice",
         "Hard"
     },
     {
         "r1bq2r1/b4pk1/p1pp1p2/1p2pP1B/1P2P1PQ/3P4/1PP3P1/R3K2R w - - 0 1",
-        {"h5g6", "e1e2", "e1d2"},
+        {"h5g6", "e1e2", "e1d2", "g2g3"},
         "Mating Attack Opening G-file Sacrifice",
         "Hard"
     },

@@ -90,17 +90,19 @@ void Uci::handle_go(const std::string& line) {
 
     while (iss2 >> token) {
         if (token == "wtime") {
-            iss >> limits.wtime;
+            iss2 >> limits.wtime;
         } else if (token == "btime") {
-            iss >> limits.btime;
+            iss2 >> limits.btime;
         } else if (token == "winc") {
-            iss >> limits.winc;
+            iss2 >> limits.winc;
         } else if (token == "binc") {
-            iss >> limits.binc;
+            iss2 >> limits.binc;
         } else if (token == "movetime") {
-            iss >> limits.movetime;
+            iss2 >> limits.movetime;
         } else if (token == "depth") {
-            iss >> limits.max_depth;
+            iss2 >> limits.max_depth;
+        } else if (token == "nodes") {
+            iss2 >> limits.max_nodes;
         } else if (token == "infinite") {
             limits.infinite = true;
         }
