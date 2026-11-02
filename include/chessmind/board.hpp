@@ -93,6 +93,7 @@ public:
     [[nodiscard]] Square ep_square() const noexcept { return ep_square_; }
     [[nodiscard]] int halfmove_clock() const noexcept { return halfmove_clock_; }
     [[nodiscard]] int fullmove_number() const noexcept { return fullmove_number_; }
+    [[nodiscard]] Move last_move() const noexcept { return history_.empty() ? NULL_MOVE : history_.back().move; }
     [[nodiscard]] uint64_t zobrist_hash() const noexcept { return zobrist_hash_; }
 
     /// @brief Calculates the full 64-bit Zobrist key from scratch for validation.

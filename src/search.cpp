@@ -79,15 +79,16 @@ int Searcher::score_move(const Board& board, const Move& m, Move tt_move, int pl
 
     if (ply < 64) {
         if (m == killer_moves_[ply][0]) return 50'000;
-        if (m == killer_moves_[ply][1]) return 40'000;
     }
 
-    // Countermove lookup
-    if (board.halfmove_clock() > 0) {
-        // Find countermove responding to last played move if available
-        Color c = board.side_to_move();
-        int hist_val = std::clamp(history_[c][m.from][m.to], -30000, 30000);
-        return hist_val;
+    // Countermove heuristic: quiet move that refuted opponent's previous move
+    Move prev = board.last_move();
+    if (!prev.is_null() && m == counter_moves_[prev.from][prev.to]) {
+        return 45'000;
+    }
+
+    if (ply < 64) {
+        if (m == killer_moves_[ply][1]) return 40'000;
     }
 
     Color c = board.side_to_move();
@@ -334,10 +335,14 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
             }
 
             if (alpha >= beta) {
-                // Beta cutoff (fail-high): record killer move and history heuristic
+                // Beta cutoff (fail-high): record killer move, countermove, and history heuristic
                 if (!m.is_capture() && ply < 64) {
                     killer_moves_[ply][1] = killer_moves_[ply][0];
                     killer_moves_[ply][0] = m;
+                    Move prev = board.last_move();
+                    if (!prev.is_null()) {
+                        counter_moves_[prev.from][prev.to] = m;
+                    }
                     int& h = history_[board.side_to_move()][m.from][m.to];
                     h += depth * depth;
                     if (h > 30000) {
