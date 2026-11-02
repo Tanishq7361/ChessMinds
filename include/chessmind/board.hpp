@@ -75,6 +75,14 @@ public:
     /// @brief Checks for insufficient mating material (K vs K, KB vs K, KN vs K, etc.).
     [[nodiscard]] bool is_insufficient_material() const noexcept;
 
+    /// @brief Evaluates Static Exchange Evaluation (SEE) for a move on this board in centipawns.
+    [[nodiscard]] int see(const Move& m) const noexcept;
+
+    /// @brief Fast check whether SEE(m) >= threshold.
+    [[nodiscard]] bool see_ge(const Move& m, int threshold = 0) const noexcept {
+        return see(m) >= threshold;
+    }
+
     // Bitboard accessors
     [[nodiscard]] Bitboard piece_bb(Color c, PieceType pt) const noexcept { return pieces_[c][pt]; }
     [[nodiscard]] Bitboard color_bb(Color c) const noexcept { return occ_[c]; }

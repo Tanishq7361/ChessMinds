@@ -15,7 +15,6 @@ public:
     /// @brief Main input reading loop parsing standard UCI commands from stdin until "quit".
     void loop();
 
-private:
     void handle_uci();
     void handle_isready();
     void handle_ucinewgame();
@@ -24,6 +23,8 @@ private:
     void handle_bench(int depth = 6);
     void handle_perft(int depth);
     void handle_legalmoves();
+
+private:
 
     Board board_;
     TranspositionTable tt_;

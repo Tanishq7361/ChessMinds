@@ -63,12 +63,17 @@ private:
     // Killer moves table: [ply][slot] (stores two quiet moves causing beta cutoffs per ply)
     std::array<std::array<Move, 2>, 64> killer_moves_{};
 
+    // Countermove table: [prev_from][prev_to] (stores refuting move against opponent's prior move)
+    std::array<std::array<Move, 64>, 64> counter_moves_{};
+
     // History heuristic table: [color][from_sq][to_sq] (accumulates successful quiet moves)
     std::array<std::array<std::array<int, 64>, 64>, 2> history_{};
 
     // Triangular PV (Principal Variation) table [ply][ply]
     std::array<std::array<Move, 64>, 64> pv_table_{};
     std::array<int, 64> pv_length_{};
+
+    int alloc_ms_ = 0;
 };
 
 } // namespace chessmind

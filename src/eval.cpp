@@ -247,6 +247,20 @@ int Evaluator::evaluate(const Board& board) noexcept {
     }
 
     // Passed pawns bonus (+15 to +85 cp scaling with advance toward promotion)
+    Bitboard w_passed_bb = 0;
+    Bitboard b_passed_bb = 0;
+
+    Square w_king_sq_eg = board.king_square(WHITE);
+    int w_kf = square_file(w_king_sq_eg);
+    int w_kr = square_rank(w_king_sq_eg);
+
+    Square b_king_sq_eg = board.king_square(BLACK);
+    int b_kf = square_file(b_king_sq_eg);
+    int b_kr = square_rank(b_king_sq_eg);
+
+    Bitboard w_rooks_all = board.piece_bb(WHITE, ROOK);
+    Bitboard b_rooks_all = board.piece_bb(BLACK, ROOK);
+
     Bitboard wp = w_pawns;
     while (wp) {
         Square sq = pop_lsb(wp);
@@ -262,9 +276,34 @@ int Evaluator::evaluate(const Board& board) noexcept {
 
         // If no opposing pawns in front or on adjacent files, pawn is passed
         if (!(b_pawns & (front_span & files_ahead))) {
+            w_passed_bb |= square_bb(sq);
             int bonus = 15 + r * 10;
             mg_score += bonus;
             eg_score += bonus * 2;
+
+            // Protected passed pawn bonus (defended by friendly pawn)
+            if (bitboards::pawn_attacks(BLACK, sq) & w_pawns) {
+                mg_score += 15;
+                eg_score += 25;
+            }
+
+            // Tarrasch rule: Rooks behind passed pawns
+            Bitboard behind_file = (bitboards::FILE_A << f) & ((1ULL << sq) - 1);
+            if (w_rooks_all & behind_file) {
+                mg_score += 15;
+                eg_score += 25;
+            }
+            if (b_rooks_all & behind_file) {
+                mg_score -= 15;
+                eg_score -= 20;
+            }
+
+            // Endgame King support / interception proximity
+            if (game_phase < 16) {
+                int w_dist_friendly = std::max(std::abs(w_kf - f), std::abs(w_kr - r));
+                int b_dist_enemy = std::max(std::abs(b_kf - f), std::abs(b_kr - r));
+                eg_score += (b_dist_enemy - w_dist_friendly) * 4;
+            }
         }
     }
 
@@ -282,10 +321,72 @@ int Evaluator::evaluate(const Board& board) noexcept {
         if (f < 7) files_ahead |= (bitboards::FILE_A << (f + 1));
 
         if (!(w_pawns & (front_span & files_ahead))) {
+            b_passed_bb |= square_bb(sq);
             int bonus = 15 + (7 - r) * 10;
             mg_score -= bonus;
             eg_score -= bonus * 2;
+
+            // Protected passed pawn bonus
+            if (bitboards::pawn_attacks(WHITE, sq) & b_pawns) {
+                mg_score -= 15;
+                eg_score -= 25;
+            }
+
+            // Tarrasch rule: Rooks behind passed pawns
+            Bitboard behind_file = (bitboards::FILE_A << f) & ~((1ULL << (sq + 1)) - 1);
+            if (b_rooks_all & behind_file) {
+                mg_score -= 15;
+                eg_score -= 25;
+            }
+            if (w_rooks_all & behind_file) {
+                mg_score += 15;
+                eg_score += 20;
+            }
+
+            // Endgame King support / interception proximity
+            if (game_phase < 16) {
+                int b_dist_friendly = std::max(std::abs(b_kf - f), std::abs(b_kr - r));
+                int w_dist_enemy = std::max(std::abs(w_kf - f), std::abs(w_kr - r));
+                eg_score -= (w_dist_enemy - b_dist_friendly) * 4;
+            }
         }
+    }
+
+    // Connected passed pawns bonus
+    Bitboard temp_wp_passed = w_passed_bb;
+    while (temp_wp_passed) {
+        Square sq = pop_lsb(temp_wp_passed);
+        int f = square_file(sq);
+        Bitboard adj = 0;
+        if (f > 0) adj |= (bitboards::FILE_A << (f - 1));
+        if (f < 7) adj |= (bitboards::FILE_A << (f + 1));
+        if (w_passed_bb & adj) {
+            mg_score += 15;
+            eg_score += 25;
+        }
+    }
+
+    Bitboard temp_bp_passed = b_passed_bb;
+    while (temp_bp_passed) {
+        Square sq = pop_lsb(temp_bp_passed);
+        int f = square_file(sq);
+        Bitboard adj = 0;
+        if (f > 0) adj |= (bitboards::FILE_A << (f - 1));
+        if (f < 7) adj |= (bitboards::FILE_A << (f + 1));
+        if (b_passed_bb & adj) {
+            mg_score -= 15;
+            eg_score -= 25;
+        }
+    }
+
+    // Central Pawn Phalanxes (pawns side-by-side controlling the center)
+    Bitboard w_phalanx = w_pawns & ((w_pawns & ~bitboards::FILE_H) << 1) & (bitboards::RANK_4 | bitboards::RANK_5 | bitboards::RANK_6);
+    if (w_phalanx) {
+        mg_score += pop_count(w_phalanx) * 12;
+    }
+    Bitboard b_phalanx = b_pawns & ((b_pawns & ~bitboards::FILE_H) << 1) & (bitboards::RANK_5 | bitboards::RANK_4 | bitboards::RANK_3);
+    if (b_phalanx) {
+        mg_score -= pop_count(b_phalanx) * 12;
     }
 
     // 4. Rook Activity: Open and Semi-Open Files
@@ -454,7 +555,9 @@ int Evaluator::evaluate(const Board& board) noexcept {
         }
     }
 
-    // Bishops mobility
+    // Bishops mobility & Bad Bishop evaluation
+    constexpr Bitboard LIGHT_SQUARES = 0x55AA55AA55AA55AAULL;
+
     Bitboard w_bishops = board.piece_bb(WHITE, BISHOP);
     while (w_bishops) {
         Square sq = pop_lsb(w_bishops);
@@ -462,6 +565,14 @@ int Evaluator::evaluate(const Board& board) noexcept {
         int count = pop_count(mob);
         mg_score += count * 4;
         eg_score += count * 4;
+
+        // Bad Bishop penalty: penalized if blocked by 4 or more friendly pawns on the same color squares
+        bool is_light = test_bit(LIGHT_SQUARES, sq);
+        int pawns_on_color = pop_count(w_pawns & (is_light ? LIGHT_SQUARES : ~LIGHT_SQUARES));
+        if (pawns_on_color >= 4) {
+            mg_score -= (pawns_on_color - 3) * 6;
+            eg_score -= (pawns_on_color - 3) * 8;
+        }
     }
 
     Bitboard b_bishops = board.piece_bb(BLACK, BISHOP);
@@ -471,6 +582,28 @@ int Evaluator::evaluate(const Board& board) noexcept {
         int count = pop_count(mob);
         mg_score -= count * 4;
         eg_score -= count * 4;
+
+        bool is_light = test_bit(LIGHT_SQUARES, sq);
+        int pawns_on_color = pop_count(b_pawns & (is_light ? LIGHT_SQUARES : ~LIGHT_SQUARES));
+        if (pawns_on_color >= 4) {
+            mg_score += (pawns_on_color - 3) * 6;
+            eg_score += (pawns_on_color - 3) * 8;
+        }
+    }
+
+    // Exchange Safety: Non-pawn pieces attacked by enemy pawns (tactical vulnerability penalty)
+    Bitboard w_minors_majors = board.piece_bb(WHITE, KNIGHT) | board.piece_bb(WHITE, BISHOP) | board.piece_bb(WHITE, ROOK) | board.piece_bb(WHITE, QUEEN);
+    Bitboard w_threatened = w_minors_majors & b_pawn_attacks;
+    if (w_threatened) {
+        mg_score -= pop_count(w_threatened) * 20;
+        eg_score -= pop_count(w_threatened) * 15;
+    }
+
+    Bitboard b_minors_majors = board.piece_bb(BLACK, KNIGHT) | board.piece_bb(BLACK, BISHOP) | board.piece_bb(BLACK, ROOK) | board.piece_bb(BLACK, QUEEN);
+    Bitboard b_threatened = b_minors_majors & w_pawn_attacks;
+    if (b_threatened) {
+        mg_score += pop_count(b_threatened) * 20;
+        eg_score += pop_count(b_threatened) * 15;
     }
 
     // Rooks on 7th rank and connected rooks

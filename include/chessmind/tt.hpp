@@ -14,7 +14,7 @@ enum TTFlag : uint8_t {
     TT_UPPERBOUND = 3    // All-node fail-low node (score <= alpha)
 };
 
-/// @brief Individual entry in the Transposition Table.
+/// @brief Individual entry in the Transposition Table (16 bytes).
 struct TTEntry {
     uint64_t key = 0;           // 64-bit Zobrist key of the position
     Move best_move{};           // Best move identified during search
@@ -23,12 +23,17 @@ struct TTEntry {
     uint8_t flag = TT_NONE;     // Node type (EXACT, LOWERBOUND, UPPERBOUND)
 };
 
-/// @brief Hash table caching evaluated positions to avoid redundant sub-tree searches across move transpositions.
+/// @brief Two-way associative cluster: 1 depth-preferred entry + 1 always-replace entry (32 bytes).
+struct TTCluster {
+    TTEntry entries[2];
+};
+
+/// @brief Two-way associative hash table with power-of-two mask caching evaluated positions.
 class TranspositionTable {
 public:
     explicit TranspositionTable(size_t size_mb = 16);
 
-    /// @brief Resizes table to allocate roughly `size_mb` megabytes.
+    /// @brief Resizes table to allocate roughly `size_mb` megabytes (rounded down to power of 2 clusters).
     void resize(size_t size_mb);
 
     /// @brief Clears all entries in the table.
@@ -38,15 +43,16 @@ public:
     /// @return True if usable TT cutoff occurs at given alpha-beta bounds and depth.
     [[nodiscard]] bool probe(uint64_t key, int depth, int alpha, int beta, int ply, int& score, Move& best_move) const noexcept;
 
-    /// @brief Stores or updates an entry in the transposition table using replace-if-deeper heuristic.
+    /// @brief Stores or updates an entry in the transposition table using two-way associative replacement.
     void store(uint64_t key, int depth, int score, uint8_t flag, int ply, Move best_move) noexcept;
 
     /// @brief Retrieves the cached best move for move ordering without requiring depth bounds.
     [[nodiscard]] Move probe_move(uint64_t key) const noexcept;
 
 private:
-    std::vector<TTEntry> table_;
-    size_t count_ = 0;
+    std::vector<TTCluster> table_;
+    size_t clusters_count_ = 0;
+    size_t mask_ = 0;
 };
 
 } // namespace chessmind

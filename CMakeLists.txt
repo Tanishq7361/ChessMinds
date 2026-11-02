@@ -118,3 +118,25 @@ target_link_libraries(test_game_simulation
         chessmind_warnings
 )
 
+# Controlled Self-Play & Match Framework target
+add_executable(self_play
+    benchmarks/self_play.cpp
+)
+
+target_link_libraries(self_play
+    PRIVATE
+        chessmind_core
+        chessmind_warnings
+)
+
+# Tactical Regression, Stress & UCI Integration test target
+add_executable(test_regression_and_uci
+    tests/test_regression_and_uci.cpp
+)
+
+target_link_libraries(test_regression_and_uci
+    PRIVATE
+        chessmind_core
+        chessmind_warnings
+)
+

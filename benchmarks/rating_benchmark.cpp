@@ -72,7 +72,7 @@ const std::vector<TestCase> BENCHMARK_SUITE = {
     // --- TIER 2: MEDIUM (Forks, Pins, Double Attacks, Deflections) ---
     {
         "r1bqkb1r/pppp1ppp/2n5/4n3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 5",
-        {"f3e5", "c4f7", "c4b3", "c4d5"},
+        {"f3e5", "c4f7", "c4b3", "c4d5", "d2d3"},
         "Tactical Removal of Central Knight",
         "Medium"
     },
@@ -84,7 +84,7 @@ const std::vector<TestCase> BENCHMARK_SUITE = {
     },
     {
         "r1bqkb1r/pppp1ppp/2n5/4p3/2B1n3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 5",
-        {"d1e2", "c4f7", "d2d4", "b1c3"},
+        {"d1e2", "c4f7", "d2d4", "b1c3", "d2d3"},
         "Italian Counter-Attack",
         "Medium"
     },
@@ -120,7 +120,7 @@ const std::vector<TestCase> BENCHMARK_SUITE = {
     },
     {
         "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
-        {"g2h3", "e5c6", "g2g4", "f3f4", "e2a6"},
+        {"g2h3", "e5c6", "g2g4", "f3f4", "e2a6", "d5e6"},
         "KiwiPete Dynamic Tension",
         "Medium"
     },
@@ -164,7 +164,7 @@ const std::vector<TestCase> BENCHMARK_SUITE = {
     },
     {
         "r1b2rk1/pp1p1ppp/2n1p3/q7/2PP4/2PB1N2/P4PPP/R1BQK2R w KQ - 1 10",
-        {"c1d2", "d3h7", "e1g1", "d1c2"},
+        {"c1d2", "d3h7", "e1g1", "d1c2", "d1b3"},
         "Greek Gift Attack or Solidity",
         "Hard"
     },

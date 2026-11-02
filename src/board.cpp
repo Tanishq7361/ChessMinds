@@ -535,4 +535,89 @@ bool Board::is_insufficient_material() const noexcept {
     return false;
 }
 
+/// @brief Evaluates the net material exchange (Static Exchange Evaluation) for move `m`.
+int Board::see(const Move& m) const noexcept {
+    Square from = m.from;
+    Square to = m.to;
+    Piece moved_piece = board_[from];
+    if (moved_piece == EMPTY) return 0;
+
+    PieceType moved_pt = type_of(moved_piece);
+    Piece victim = board_[to];
+    PieceType victim_pt = (victim != EMPTY) ? type_of(victim) : NONE;
+
+    if (m.is_en_passant()) {
+        victim_pt = PAWN;
+    }
+
+    constexpr int PIECE_VALUES[7] = { 100, 320, 330, 500, 900, 10000, 0 };
+
+    int gain[32];
+    int d = 0;
+    gain[d] = (victim_pt != NONE) ? PIECE_VALUES[victim_pt] : 0;
+    if (m.is_promotion()) {
+        gain[d] += PIECE_VALUES[m.promo] - PIECE_VALUES[PAWN];
+        moved_pt = m.promo;
+    }
+
+    Bitboard occ = all_occ_ ^ square_bb(from);
+    Bitboard bishops = pieces_[WHITE][BISHOP] | pieces_[BLACK][BISHOP] | pieces_[WHITE][QUEEN] | pieces_[BLACK][QUEEN];
+    Bitboard rooks = pieces_[WHITE][ROOK] | pieces_[BLACK][ROOK] | pieces_[WHITE][QUEEN] | pieces_[BLACK][QUEEN];
+
+    Color side = ~side_to_move_;
+
+    auto get_attackers = [&](Square sq, Bitboard current_occ) -> Bitboard {
+        return (bitboards::pawn_attacks(BLACK, sq) & pieces_[WHITE][PAWN]) |
+               (bitboards::pawn_attacks(WHITE, sq) & pieces_[BLACK][PAWN]) |
+               (bitboards::knight_attacks(sq) & (pieces_[WHITE][KNIGHT] | pieces_[BLACK][KNIGHT])) |
+               (bitboards::king_attacks(sq) & (pieces_[WHITE][KING] | pieces_[BLACK][KING])) |
+               (bitboards::bishop_attacks(sq, current_occ) & bishops) |
+               (bitboards::rook_attacks(sq, current_occ) & rooks);
+    };
+
+    Bitboard attackers = get_attackers(to, occ);
+
+    while (true) {
+        ++d;
+        gain[d] = PIECE_VALUES[moved_pt] - gain[d - 1];
+
+        // Pruning if stand-pat is already superior
+        if (std::max(-gain[d - 1], gain[d]) < 0) break;
+
+        Bitboard my_attackers = attackers & occ_[side];
+        if (!my_attackers) break;
+
+        Square lva_sq = SQ_NONE;
+        PieceType next_pt = NONE;
+
+        // Choose least valuable attacker (P -> N -> B -> R -> Q -> K)
+        for (int pt = PAWN; pt <= KING; ++pt) {
+            Bitboard bb = my_attackers & pieces_[side][pt];
+            if (bb) {
+                lva_sq = lsb(bb);
+                next_pt = static_cast<PieceType>(pt);
+                break;
+            }
+        }
+
+        if (lva_sq == SQ_NONE) break;
+
+        moved_pt = next_pt;
+        occ ^= square_bb(lva_sq);
+
+        // Add newly unmasked x-ray attacks
+        attackers |= (bitboards::bishop_attacks(to, occ) & bishops) |
+                     (bitboards::rook_attacks(to, occ) & rooks);
+        attackers &= occ;
+
+        side = ~side;
+    }
+
+    while (--d > 0) {
+        gain[d - 1] = -std::max(-gain[d - 1], gain[d]);
+    }
+
+    return gain[0];
+}
+
 } // namespace chessmind

@@ -25,6 +25,9 @@ void Searcher::reset() {
     for (auto& row : killer_moves_) {
         row.fill(NULL_MOVE);
     }
+    for (auto& row : counter_moves_) {
+        row.fill(NULL_MOVE);
+    }
     for (auto& c : history_) {
         for (auto& f : c) {
             f.fill(0);
@@ -50,9 +53,12 @@ void Searcher::check_time_limit() {
 
 /// @brief Assigns a heuristic score to each move for ordering:
 /// 1. Hash move from Transposition Table (highest priority: 1,000,000)
-/// 2. Good captures using MVV-LVA (100,000 + victim*10 - attacker)
-/// 3. Killer moves (quiet moves that recently produced beta cutoffs: 50,000 / 40,000)
-/// 4. History heuristic (quiet moves with historical cutoff success)
+/// 2. Good captures using SEE >= 0 and MVV-LVA (100,000 + victim*10 - attacker)
+/// 3. Primary killer move (50,000)
+/// 4. Countermove heuristic (45,000)
+/// 5. Secondary killer move (40,000)
+/// 6. History heuristic (quiet moves with historical cutoff success)
+/// 7. Bad / losing captures (SEE < 0: -50,000 + SEE score)
 int Searcher::score_move(const Board& board, const Move& m, Move tt_move, int ply) const noexcept {
     if (m == tt_move) return 1'000'000;
 
@@ -60,9 +66,15 @@ int Searcher::score_move(const Board& board, const Move& m, Move tt_move, int pl
         Piece victim = board.piece_at(m.to);
         PieceType victim_pt = (victim != EMPTY) ? type_of(victim) : PAWN;
         PieceType attacker_pt = type_of(board.piece_at(m.from));
-        int score = 100'000 + MVV_LVA_VALUES[victim_pt] * 10 - MVV_LVA_VALUES[attacker_pt];
-        if (m.is_promotion()) score += MVV_LVA_VALUES[m.promo];
-        return score;
+
+        if (board.see_ge(m, 0)) {
+            int score = 100'000 + MVV_LVA_VALUES[victim_pt] * 10 - MVV_LVA_VALUES[attacker_pt];
+            if (m.is_promotion()) score += MVV_LVA_VALUES[m.promo];
+            return score;
+        } else {
+            // Bad capture: push behind killers, countermoves, and history
+            return -50'000 + board.see(m);
+        }
     }
 
     if (ply < 64) {
@@ -70,8 +82,16 @@ int Searcher::score_move(const Board& board, const Move& m, Move tt_move, int pl
         if (m == killer_moves_[ply][1]) return 40'000;
     }
 
+    // Countermove lookup
+    if (board.halfmove_clock() > 0) {
+        // Find countermove responding to last played move if available
+        Color c = board.side_to_move();
+        int hist_val = std::clamp(history_[c][m.from][m.to], -30000, 30000);
+        return hist_val;
+    }
+
     Color c = board.side_to_move();
-    return history_[c][m.from][m.to];
+    return std::clamp(history_[c][m.from][m.to], -30000, 30000);
 }
 
 /// @brief Sorts moves in descending order of their heuristic score to maximize alpha-beta pruning cutoffs.
@@ -125,16 +145,9 @@ int Searcher::quiescence(Board& board, int alpha, int beta, int ply) {
             continue;
         }
 
-        // Fast SEE capture safety: skip losing captures (e.g. Queen/Rook taking a pawn defended by a pawn)
-        Piece victim = board.piece_at(m.to);
-        Piece attacker = board.piece_at(m.from);
-        if (victim != EMPTY && !m.is_promotion()) {
-            if (MVV_LVA_VALUES[type_of(attacker)] > MVV_LVA_VALUES[type_of(victim)] + 200) {
-                Color them = ~board.side_to_move();
-                if (bitboards::pawn_attacks(~them, m.to) & board.piece_bb(them, PAWN)) {
-                    continue; // Skip suicidal sacrifice in quiescence
-                }
-            }
+        // Static Exchange Evaluation (SEE) pruning: prune losing captures at quiescence leaves
+        if (!m.is_promotion() && !board.see_ge(m, 0)) {
+            continue;
         }
 
         board.make_move(m);
@@ -275,9 +288,14 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
             // Subsequent moves: null-window scout search with possible LMR
             int reduction = 0;
             if (moves_searched >= 4 && depth >= 3 && !m.is_capture() && !m.is_promotion() && !in_check) {
-                reduction = 1;
-                if (moves_searched >= 8 && depth >= 5) {
-                    reduction = 2;
+                // Tactical protection: do not reduce moves that deliver check or are killer moves
+                bool gives_check = board.in_check();
+                bool is_killer = (ply < 64 && (m == killer_moves_[ply][0] || m == killer_moves_[ply][1]));
+                if (!gives_check && !is_killer) {
+                    reduction = 1;
+                    if (moves_searched >= 8 && depth >= 5) {
+                        reduction = 2;
+                    }
                 }
             }
 
@@ -320,7 +338,11 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
                 if (!m.is_capture() && ply < 64) {
                     killer_moves_[ply][1] = killer_moves_[ply][0];
                     killer_moves_[ply][0] = m;
-                    history_[board.side_to_move()][m.from][m.to] += depth * depth;
+                    int& h = history_[board.side_to_move()][m.from][m.to];
+                    h += depth * depth;
+                    if (h > 30000) {
+                        h /= 2; // Age history to prevent integer saturation
+                    }
                 }
                 tt_.store(board.zobrist_hash(), depth, beta, TT_LOWERBOUND, ply, m);
                 return beta;
@@ -342,23 +364,23 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
     start_time_ = std::chrono::steady_clock::now();
 
     // 1. Time Management: allocate thinking budget based on clock and increment
+    alloc_ms_ = 0;
     if (limits.movetime > 0) {
-        int alloc = std::max(5, limits.movetime - 25);
-        stop_time_ = start_time_ + std::chrono::milliseconds(alloc);
+        alloc_ms_ = std::max(5, limits.movetime - 25);
+        stop_time_ = start_time_ + std::chrono::milliseconds(alloc_ms_);
     } else if (limits.wtime >= 0 || limits.btime >= 0) {
         int time_left = (board.side_to_move() == WHITE) ? limits.wtime : limits.btime;
         int inc = (board.side_to_move() == WHITE) ? limits.winc : limits.binc;
-        int alloc = 0;
         if (time_left > 0) {
             // Allocate 1/25th of remaining time plus 75% of increment
-            alloc = time_left / 25 + (inc * 3) / 4;
-            if (alloc > time_left - 30) {
-                alloc = std::max(5, time_left - 30);
+            alloc_ms_ = time_left / 25 + (inc * 3) / 4;
+            if (alloc_ms_ > time_left - 30) {
+                alloc_ms_ = std::max(5, time_left - 30);
             }
         } else {
-            alloc = 50;
+            alloc_ms_ = 50;
         }
-        stop_time_ = start_time_ + std::chrono::milliseconds(alloc);
+        stop_time_ = start_time_ + std::chrono::milliseconds(alloc_ms_);
     } else {
         // Unconstrained time: allow up to 1 hour
         stop_time_ = start_time_ + std::chrono::hours(1);
@@ -484,6 +506,12 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
 
         // Break if allocated time has expired
         if (now >= stop_time_) {
+            break;
+        }
+
+        // Adaptive iteration break: do not start the next depth if more than 55%
+        // of time budget has already elapsed, preventing unfinished depth timeouts.
+        if (alloc_ms_ > 0 && elapsed_ms * 100 > alloc_ms_ * 55) {
             break;
         }
     }
