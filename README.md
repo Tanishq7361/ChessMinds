@@ -112,7 +112,19 @@ The server automatically bridges HTTP requests to the compiled `chessmind.exe` e
 
 ---
 
-## 6. Launch Command & Lichess-Bot Configuration
+## 6. GitHub Pages Deployment
+
+The repository includes `.github/workflows/deploy.yml`, which builds the web interface and deploys `dist/` whenever changes are pushed to `main`.
+
+Before the first deployment, open the repository’s **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**. GitHub Pages serves the static interface at:
+
+`https://tanishq7361.github.io/ChessMinds/`
+
+GitHub Pages cannot run the local C++ engine or the Python API server, so engine analysis and move generation require running the project locally with `python web/server.py`.
+
+---
+
+## 7. Launch Command & Lichess-Bot Configuration
 
 ### Launch Command
 - Windows: `.\build\chessmind.exe`
@@ -155,7 +167,7 @@ The server automatically bridges HTTP requests to the compiled `chessmind.exe` e
 
 ---
 
-## 7. Rating Benchmark & Standard Elo Estimation
+## 8. Rating Benchmark & Standard Elo Estimation
 
 ChessMinds includes a dedicated tactical suite and Elo calibration benchmark executable (`rating_benchmark`) with 25 curated positions (Easy, Medium, Hard) drawn from standard chess tactical test suites (Bratko-Kopec, Win at Chess, Encyclopedia of Chess Middlegames).
 
@@ -181,7 +193,7 @@ On Linux / macOS:
 
 ---
 
-## 8. UCI Protocol Reference
+## 9. UCI Protocol Reference
 
 | Command | Response | Description |
 |---|---|---|
@@ -197,6 +209,6 @@ On Linux / macOS:
 
 ---
 
-## 9. License
+## 10. License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
