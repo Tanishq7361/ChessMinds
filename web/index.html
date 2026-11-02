@@ -702,8 +702,8 @@
       </div>
       <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
         <span class="stat-label">Search Depth:</span>
-        <input type="range" id="rngDepth" min="1" max="10" value="6" oninput="updateDepthLabel()" style="flex:1;">
-        <span id="lblDepth" style="font-weight: bold; width: 20px;">6</span>
+        <input type="range" id="rngDepth" min="1" max="10" value="10" oninput="updateDepthLabel()" style="flex:1;">
+        <span id="lblDepth" style="font-weight: bold; width: 20px;">10</span>
       </div>
     </div>
 
@@ -1003,7 +1003,7 @@
       body: JSON.stringify({
         fen: baseFen,
         moves: moveHistory,
-        depth: 6
+        depth: 10
       }),
       signal: evalAbortController.signal
     })

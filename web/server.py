@@ -86,7 +86,7 @@ class EngineBridge:
             self.process.stdin.write(cmd + "\n")
             self.process.stdin.flush()
 
-    def query_move(self, fen=None, moves=None, depth=6, movetime=None):
+    def query_move(self, fen=None, moves=None, depth=10, movetime=None):
         with self.lock:
             self.ensure_engine_running()
             if not self.process:
@@ -107,7 +107,7 @@ class EngineBridge:
             elif depth:
                 go_cmd = f"go depth {depth}"
             else:
-                go_cmd = "go depth 6"
+                go_cmd = "go depth 10"
 
             self.send_command(go_cmd)
 
@@ -136,6 +136,10 @@ class EngineBridge:
                 line = line.strip()
                 if line.startswith("info"):
                     parts = line.split()
+                    if len(parts) >= 4 and parts[1] == "string" and parts[2] == "result":
+                        result["gameover"] = True
+                        result["result"] = parts[3]
+                        continue
                     for i in range(len(parts)):
                         if parts[i] == "depth" and i + 1 < len(parts):
                             result["depth"] = int(parts[i + 1])
@@ -253,7 +257,7 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             fen = data.get("fen", "startpos")
             moves = data.get("moves", [])
-            depth = data.get("depth", 6)
+            depth = data.get("depth", 10)
             movetime = data.get("movetime", None)
 
             response = bridge.query_move(fen=fen, moves=moves, depth=depth, movetime=movetime)
@@ -270,7 +274,7 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             fen = data.get("fen", "startpos")
             moves = data.get("moves", [])
-            depth = data.get("depth", 6)
+            depth = data.get("depth", 10)
 
             response = bridge.query_move(fen=fen, moves=moves, depth=depth)
             self.send_json_response(response, 200)

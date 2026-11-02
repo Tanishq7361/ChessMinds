@@ -289,6 +289,26 @@ void MoveGen::generate_legal_captures(Board& board, std::vector<Move>& legal_cap
     }
 }
 
+bool MoveGen::has_legal_move(Board& board) {
+    std::vector<Move> pseudo;
+    pseudo.reserve(48);
+    generate_pseudo_legal_moves(board, pseudo, false);
+
+    const Color us = board.side_to_move();
+    for (const Move& m : pseudo) {
+        if (board.piece_at(m.to) == make_piece(~us, KING)) {
+            continue;
+        }
+        board.make_move(m);
+        const bool legal = !board.in_check(us);
+        board.undo_move();
+        if (legal) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// @brief Checks whether a specific move is strictly legal in the given board position.
 bool MoveGen::is_legal_move(Board& board, const Move& m) {
     std::vector<Move> legal;

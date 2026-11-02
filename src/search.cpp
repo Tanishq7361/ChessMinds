@@ -126,28 +126,44 @@ int Searcher::quiescence(Board& board, int alpha, int beta, int ply) {
         return Evaluator::evaluate(board);
     }
 
-    // Stand-pat score: static evaluation before making any capture
-    int stand_pat = Evaluator::evaluate(board);
-    if (stand_pat >= beta) {
-        return beta; // Fail-high cutoff
-    }
-    if (stand_pat > alpha) {
-        alpha = stand_pat;
+    const bool in_check = board.in_check();
+    int stand_pat = -Evaluator::MATE_SCORE;
+    std::vector<Move> moves;
+
+    if (in_check) {
+        // Stand-pat is illegal in check. Search every evasion so a mate at a
+        // nominal leaf cannot be mistaken for an ordinary static position.
+        MoveGen::generate_legal_moves(board, moves);
+        if (moves.empty()) {
+            return -Evaluator::MATE_SCORE + ply;
+        }
+    } else {
+        stand_pat = Evaluator::evaluate(board);
+        if (stand_pat >= beta) {
+            return beta;
+        }
+        if (stand_pat > alpha) {
+            alpha = stand_pat;
+        }
+
+        // A captureless leaf can still be stalemate. This early-exit check
+        // avoids allocating a full legal move list in normal positions.
+        MoveGen::generate_legal_captures(board, moves);
+        if (moves.empty() && !MoveGen::has_legal_move(board)) {
+            return Evaluator::DRAW_SCORE;
+        }
     }
 
-    // Search only legal captures and promotions
-    std::vector<Move> captures;
-    MoveGen::generate_legal_captures(board, captures);
-    order_moves(board, captures, NULL_MOVE, ply);
+    order_moves(board, moves, NULL_MOVE, ply);
 
-    for (const auto& m : captures) {
+    for (const auto& m : moves) {
         // Delta pruning: skip capture if even capturing a queen cannot bring score up to alpha
-        if (stand_pat + 900 + 100 < alpha && !m.is_promotion()) {
+        if (!in_check && stand_pat + 900 + 100 < alpha && !m.is_promotion()) {
             continue;
         }
 
         // Static Exchange Evaluation (SEE) pruning: prune losing captures at quiescence leaves
-        if (!m.is_promotion() && !board.see_ge(m, 0)) {
+        if (!in_check && !m.is_promotion() && !board.see_ge(m, 0)) {
             continue;
         }
 
@@ -394,6 +410,9 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
     std::vector<Move> root_moves;
     MoveGen::generate_legal_moves(board, root_moves);
     if (root_moves.empty()) {
+        std::cout << "info string result "
+                  << (board.in_check() ? "checkmate" : "stalemate")
+                  << std::endl;
         searching_ = false;
         return NULL_MOVE;
     }
