@@ -1,0 +1,26 @@
+# ChessMinds Standard UCI Benchmark Positions
+# Format: FEN [optional identifier / description]
+
+# 1. Standard Starting Position (Opening tree & early expansion)
+rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ; Startpos (Opening)
+
+# 2. KiwiPete (Severe tactical complications, heavy pins and captures)
+r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1 ; KiwiPete (Complex Tactics)
+
+# 3. Italian Game / Open Tactics (Piece development & central tension)
+r1bqkb1r/pppp1ppp/2n5/4p3/2B1n3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 5 ; Italian Game (Open Tactics)
+
+# 4. Closed King's Indian Defense (Middlegame pawn structures & maneuvers)
+r2q1rk1/ppp2ppp/2n1bn2/2b1p3/3pP3/3P1NPP/PPP1NPB1/R1BQ1RK1 b - - 0 9 ; Closed King's Indian (Middlegame)
+
+# 5. Rook & Pawn Endgame (Precision zugzwang & king activity)
+8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1 ; Rook & Pawn Endgame
+
+# 6. WAC 001 - Win at Chess (Greek Gift Queen Sacrifice)
+2rr3k/pp3pp1/1nnqbN1p/3pN3/2pP4/2P3Q1/PPB4P/R4RK1 w - - 0 1 ; WAC 001 (Greek Gift Strike)
+
+# 7. Deflection & Back-rank Mate Threat
+r1b2rk1/ppp2ppp/8/2n1p3/2B5/4P3/PPP3PP/2KR3R w - - 0 1 ; Deflection & Back-Rank Attack
+
+# 8. Minor Piece Endgame (Knight vs Bishop imbalances)
+8/8/4k3/8/2K5/5N2/8/8 w - - 0 1 ; Minor Piece Endgame

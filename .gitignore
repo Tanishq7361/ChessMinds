@@ -34,6 +34,11 @@ data/
 *.txt.gz
 *.csv.gz
 
+# Benchmark generated reports
+benchmark_results.csv
+benchmark_summary.json
+reports/
+
 # Python & Tuner artifacts
 __pycache__/
 *.pyc
