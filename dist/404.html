@@ -170,21 +170,21 @@
 
     <!-- Engine Play Controls -->
     <div class="card">
-      <div class="card-title">Engine Play Options</div>
+      <div class="card-title">Game & Engine Play Mode</div>
+      <div style="margin-bottom: 12px;">
+        <label class="stat-label" for="selGameMode" style="display:block; margin-bottom: 5px;">Mode:</label>
+        <select id="selGameMode" onchange="handleGameModeChange(this.value)" style="width: 100%; padding: 8px 10px; background: var(--surface-light); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-size: 0.88rem; font-weight: 600;">
+          <option value="vs-black" selected>Play vs Computer (You: White, AI: Black)</option>
+          <option value="vs-white">Play vs Computer (You: Black, AI: White)</option>
+          <option value="manual">Two Players (Manual Pass & Play)</option>
+        </select>
+      </div>
       <div class="btn-group">
-        <button id="btnEngineMove" onclick="requestSelectedEngineAction()" class="primary">Show Best Move</button>
-        <button onclick="requestPositionEval(true)">Calculate Position</button>
+        <button id="btnEngineMove" onclick="requestEngineMove(true, true)" class="primary">Play Computer Move</button>
+        <button onclick="requestEngineMove(true, false)">Show Hint</button>
         <button onclick="undoMove()">Takeback</button>
       </div>
-      <div style="display: flex; align-items: center; gap: 18px; margin-top: 12px; font-size: 0.85rem;">
-        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;"><input type="radio" name="engineMoveMode" value="show" checked onchange="updateEngineActionLabel()"> Show move</label>
-        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;"><input type="radio" name="engineMoveMode" value="make" onchange="updateEngineActionLabel()"> Make move</label>
-      </div>
-      <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.85rem;">
-        <input type="checkbox" id="chkAutoEngine" onchange="handleAutoEngineChange()">
-        <label for="chkAutoEngine">ChessMinds plays Black (off = manually play both sides)</label>
-      </div>
-      <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+      <div style="display: flex; align-items: center; gap: 10px; margin-top: 14px;">
         <span class="stat-label">Search Depth:</span>
         <input type="range" id="rngDepth" min="1" max="20" value="4" oninput="updateDepthLabel()" style="flex:1;">
         <span id="lblDepth" style="font-weight: bold; width: 28px;">4</span>
@@ -382,6 +382,7 @@
     syncCastlingControls();
     fetchLegalMoves();
     requestPositionEval();
+    checkAndTriggerAutoMove();
   }
 
   function changeTheme(themeClass) {
@@ -1459,11 +1460,8 @@
       requestPositionEval();
       checkGameStatus();
 
-      // Auto-reply with ChessMinds if enabled
-      if (document.getElementById("chkAutoEngine").checked && sideToMove === 'b') {
-        if (engineTimer) clearTimeout(engineTimer);
-        engineTimer = setTimeout(() => requestEngineMove(false), 200);
-      }
+      // Auto-reply with ChessMinds if it's the computer's turn
+      checkAndTriggerAutoMove();
     }
   }
 
@@ -1562,11 +1560,25 @@
     });
   }
 
-  function handleAutoEngineChange() {
-    const autoEngine = document.getElementById("chkAutoEngine").checked;
-    if (autoEngine && sideToMove === 'b' && !gameOver) {
+  let gameMode = "vs-black";
+
+  function handleGameModeChange(mode) {
+    gameMode = mode;
+    if (mode === "vs-white" && !isFlipped) {
+      toggleFlip();
+    } else if (mode === "vs-black" && isFlipped) {
+      toggleFlip();
+    }
+    checkAndTriggerAutoMove();
+  }
+
+  function checkAndTriggerAutoMove() {
+    if (gameOver) return;
+    const isAiTurn = (gameMode === "vs-black" && sideToMove === 'b') ||
+                     (gameMode === "vs-white" && sideToMove === 'w');
+    if (isAiTurn) {
       if (engineTimer) clearTimeout(engineTimer);
-      engineTimer = setTimeout(() => requestEngineMove(false), 0);
+      engineTimer = setTimeout(() => requestEngineMove(false, true), 300);
     }
   }
 
@@ -1910,16 +1922,6 @@
     document.getElementById("lblDepth").innerText = document.getElementById("rngDepth").value;
   }
 
-  function requestSelectedEngineAction() {
-    const makeMove = document.querySelector('input[name="engineMoveMode"]:checked').value === 'make';
-    requestEngineMove(true, makeMove);
-  }
-
-  function updateEngineActionLabel() {
-    const makeMove = document.querySelector('input[name="engineMoveMode"]:checked').value === 'make';
-    document.getElementById("btnEngineMove").innerText = makeMove ? "Play Engine Move" : "Show Best Move";
-  }
-
   function newGame() {
     if (engineTimer) {
       clearTimeout(engineTimer);
@@ -1965,9 +1967,9 @@
     if (banner) banner.remove();
     gameOver = false;
 
-    // If Auto Engine is on and it's White's turn, undo both the Engine's move and the User's move
-    const autoEngine = document.getElementById("chkAutoEngine").checked;
-    if (autoEngine && sideToMove === 'w' && moveHistory.length >= 2) {
+    // If playing against computer, undo both the engine move and user move
+    const isAiGame = gameMode === "vs-black" || gameMode === "vs-white";
+    if (isAiGame && moveHistory.length >= 2) {
       moveHistory.pop();
       moveHistory.pop();
     } else {
