@@ -23,6 +23,25 @@ compile_commands.json
 *.pdb
 *.ilk
 
+# Generated human-game training data & datasets
+data/raw/
+data/processed/
+data/positions/
+data/filtered/
+data/
+*.pgn
+*.pgn.zst
+*.txt.gz
+*.csv.gz
+
+# Python & Tuner artifacts
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+src/eval.cpp.*backup*
+src/eval.cpp.iter*
+
 # IDE & Editor files
 .vscode/
 .idea/
@@ -39,4 +58,3 @@ node_modules/
 .DS_Store
 Thumbs.db
 desktop.ini
-

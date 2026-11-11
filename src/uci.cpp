@@ -191,6 +191,26 @@ void Uci::handle_legalmoves() {
     std::cout << "\n" << std::flush;
 }
 
+/// @brief Reports a terminal game state for the current position and move history.
+void Uci::handle_game_status() {
+    std::vector<Move> legal_moves;
+    MoveGen::generate_legal_moves(board_, legal_moves);
+
+    std::string status = "ongoing";
+    if (legal_moves.empty()) {
+        status = board_.in_check() ? "checkmate" : "stalemate";
+    } else if (board_.is_draw_by_repetition(3)) {
+        status = "threefold-repetition";
+    } else if (board_.halfmove_clock() >= 150) {
+        // FIDE Article 9.6.2: 75 moves by each player without pawn move/capture.
+        status = "seventy-five-move-rule";
+    } else if (board_.is_insufficient_material()) {
+        status = "insufficient-material";
+    }
+
+    std::cout << "gamestatus " << status << "\n" << std::flush;
+}
+
 /// @brief Continuously reads commands from stdin and dispatches to appropriate handlers.
 void Uci::loop() {
     std::string line;
@@ -218,6 +238,8 @@ void Uci::loop() {
             handle_perft(depth);
         } else if (command == "legalmoves") {
             handle_legalmoves();
+        } else if (command == "gamestatus") {
+            handle_game_status();
         } else if (command == "bench") {
             int depth = 6;
             iss >> depth;

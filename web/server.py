@@ -92,6 +92,11 @@ class EngineBridge:
             if not self.process:
                 return {"error": "Engine binary not running. Please build with CMake."}
 
+            try:
+                depth = max(1, min(int(depth), 20))
+            except (TypeError, ValueError):
+                depth = 10
+
             if fen and fen != "startpos":
                 pos_cmd = f"position fen {fen}"
             else:
@@ -119,7 +124,8 @@ class EngineBridge:
                 "nodes": 0,
                 "nps": 0,
                 "time": 0,
-                "pv": ""
+                "pv": "",
+                "requested_depth": depth
             }
 
             # Determine whether it's Black's turn to search
@@ -209,6 +215,27 @@ class EngineBridge:
                     break
             return legal_moves
 
+    def query_game_status(self, fen=None, moves=None):
+        """Return the current terminal state using the engine's exact history."""
+        with self.lock:
+            self.ensure_engine_running()
+            if not self.process:
+                return "ongoing"
+
+            pos_cmd = f"position fen {fen}" if fen and fen != "startpos" else "position startpos"
+            if moves:
+                pos_cmd += " moves " + " ".join(moves)
+
+            self.send_command(pos_cmd)
+            self.send_command("gamestatus")
+            while True:
+                line = self.process.stdout.readline()
+                if not line:
+                    return "ongoing"
+                line = line.strip()
+                if line.startswith("gamestatus "):
+                    return line.split(maxsplit=1)[1]
+
 bridge = EngineBridge(ENGINE_PATH)
 
 class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -293,6 +320,17 @@ class ChessRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             legal = bridge.query_legal_moves(fen=fen, moves=moves)
             self.send_json_response({"moves": legal}, 200)
+        elif path == "/api/gamestatus":
+            content_length = int(self.headers.get("Content-Length", 0))
+            post_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(post_data.decode("utf-8"))
+            except Exception as e:
+                self.send_error(400, f"Invalid JSON: {e}")
+                return
+
+            status = bridge.query_game_status(data.get("fen", "startpos"), data.get("moves", []))
+            self.send_json_response({"status": status}, 200)
         else:
             self.send_error(404, "Endpoint not found")
 

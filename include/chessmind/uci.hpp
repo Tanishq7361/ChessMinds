@@ -23,6 +23,7 @@ public:
     void handle_bench(int depth = 6);
     void handle_perft(int depth);
     void handle_legalmoves();
+    void handle_game_status();
 
 private:
 

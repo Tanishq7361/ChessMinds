@@ -103,6 +103,59 @@
       align-items: center;
     }
 
+    .board-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      width: 520px;
+    }
+
+    .captured-panel {
+      min-height: 29px;
+      padding: 4px 9px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .captured-label {
+      min-width: 76px;
+      color: var(--text);
+    }
+
+    .captured-pieces {
+      display: flex;
+      align-items: center;
+      gap: 1px;
+      min-height: 20px;
+      flex: 1;
+    }
+
+    .captured-piece {
+      width: 21px;
+      height: 21px;
+      object-fit: contain;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+    }
+
+    .captured-empty {
+      font-weight: 500;
+      font-style: italic;
+      color: var(--text-muted);
+    }
+
+    .material-deficit {
+      color: var(--accent);
+      font-family: monospace;
+      font-size: 0.8rem;
+    }
+
     /* Iconic Vertical Evaluation Bar */
     .vertical-eval-wrapper {
       display: flex;
@@ -193,6 +246,8 @@
 
     .square.selected { background: var(--sq-selected) !important; }
     .square.last-move { background: var(--sq-last-move) !important; }
+    .square.best-move-from { box-shadow: inset 0 0 0 4px #2563eb; z-index: 1; }
+    .square.best-move-to { box-shadow: inset 0 0 0 4px #ef4444; z-index: 1; }
     .square.check { background: rgba(239, 68, 68, 0.65) !important; }
 
     .hint-dot {
@@ -536,6 +591,16 @@
       padding: 4px 8px;
       font-size: 0.8rem;
     }
+    .setup-castling {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px 12px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .setup-castling label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .setup-help { color: var(--text-muted); font-size: 0.78rem; text-align: center; }
     .setup-banner {
       padding: 6px 14px;
       background: rgba(34, 197, 94, 0.15);
@@ -600,8 +665,22 @@
         </div>
       </div>
 
-      <!-- Main Chessboard -->
-      <div class="board-container" id="chessboard"></div>
+      <div class="board-stack">
+        <div class="captured-panel" aria-live="polite">
+          <span class="captured-label">Black down</span>
+          <span class="captured-pieces" id="capturedBlack"></span>
+          <span class="material-deficit" id="materialBlack"></span>
+        </div>
+
+        <!-- Main Chessboard -->
+        <div class="board-container" id="chessboard"></div>
+
+        <div class="captured-panel" aria-live="polite">
+          <span class="captured-label">White down</span>
+          <span class="captured-pieces" id="capturedWhite"></span>
+          <span class="material-deficit" id="materialWhite"></span>
+        </div>
+      </div>
     </div>
 
     <!-- Navigation & board buttons -->
@@ -617,7 +696,7 @@
 
     <!-- Board Setup Palette & Controls (Piece Editor) -->
     <div id="setupContainer" style="display: none; width: 100%; flex-direction: column; align-items: center; gap: 8px;">
-      <div class="setup-banner">Board Setup Mode: Select a piece below, then click any square to place or erase it.</div>
+      <div class="setup-banner">Board Setup Mode: Select a piece, then click a square to place it. Select the eraser or right-click a square to remove a piece.</div>
       <div class="setup-palette" id="setupPalette">
         <!-- White Pieces -->
         <div class="palette-piece selected" data-piece="P" title="White Pawn" onclick="selectPalettePiece('P')"><img src="public/wp.png" alt="P"></div>
@@ -652,6 +731,14 @@
         <button onclick="setupDone()" class="primary">Done / Play</button>
         <button onclick="setupCancel()">Cancel</button>
       </div>
+      <div class="setup-castling" aria-label="Castling rights">
+        <span>Castling:</span>
+        <label><input id="castleK" type="checkbox" onchange="updateCastlingRightsFromControls()"> White O-O</label>
+        <label><input id="castleQ" type="checkbox" onchange="updateCastlingRightsFromControls()"> White O-O-O</label>
+        <label><input id="castlek" type="checkbox" onchange="updateCastlingRightsFromControls()"> Black O-O</label>
+        <label><input id="castleq" type="checkbox" onchange="updateCastlingRightsFromControls()"> Black O-O-O</label>
+      </div>
+      <div class="setup-help">Use <strong>Done / Play</strong> to analyze or play the position.</div>
     </div>
   </div>
 
@@ -693,17 +780,27 @@
     <div class="card">
       <div class="card-title">Engine Play Options</div>
       <div class="btn-group">
-        <button id="btnEngineMove" onclick="requestEngineMove(true)" class="primary">Play Engine Move</button>
+        <button id="btnEngineMove" onclick="requestSelectedEngineAction()" class="primary">Show Best Move</button>
+        <button onclick="requestPositionEval(true)">Calculate Position</button>
         <button onclick="undoMove()">Takeback</button>
       </div>
+      <div style="display: flex; align-items: center; gap: 18px; margin-top: 12px; font-size: 0.85rem;">
+        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;"><input type="radio" name="engineMoveMode" value="show" checked onchange="updateEngineActionLabel()"> Show move</label>
+        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;"><input type="radio" name="engineMoveMode" value="make" onchange="updateEngineActionLabel()"> Make move</label>
+      </div>
       <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.85rem;">
-        <input type="checkbox" id="chkAutoEngine" checked>
-        <label for="chkAutoEngine">Auto-reply with ChessMinds as Black</label>
+        <input type="checkbox" id="chkAutoEngine" onchange="handleAutoEngineChange()">
+        <label for="chkAutoEngine">ChessMinds plays Black (off = manually play both sides)</label>
       </div>
       <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
         <span class="stat-label">Search Depth:</span>
-        <input type="range" id="rngDepth" min="1" max="10" value="10" oninput="updateDepthLabel()" style="flex:1;">
-        <span id="lblDepth" style="font-weight: bold; width: 20px;">10</span>
+        <input type="range" id="rngDepth" min="1" max="20" value="4" oninput="updateDepthLabel()" style="flex:1;">
+        <span id="lblDepth" style="font-weight: bold; width: 28px;">4</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+        <label class="stat-label" for="engineTimeSeconds">Think time (seconds):</label>
+        <input id="engineTimeSeconds" type="number" min="0" max="60" step="1" value="1" style="width: 72px;">
+        <span class="stat-label">0 uses depth</span>
       </div>
     </div>
 
@@ -747,11 +844,16 @@
     return `${base}public/${clean}`;
   }
 
+  function isServerAvailable() {
+    // Browsers block mixed content (HTTP from HTTPS on github.io)
+    if (window.location.protocol === 'https:' && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
+      return false;
+    }
+    return true;
+  }
+
   function getApiUrl(endpoint) {
     const clean = endpoint.startsWith('/') ? endpoint : ('/' + endpoint);
-    if (window.location.hostname.includes('github.io')) {
-      return 'http://127.0.0.1:8080' + clean;
-    }
     return clean;
   }
 
@@ -806,7 +908,9 @@
   let historyPly = 0;
   let sideToMove = 'w';
   let lastMove = null;
+  let bestMoveHint = null;
   let enPassantSq = null; // tracks the en passant target square (e.g. "e3")
+  let castlingRights = "KQkq";
   let gameOver = false;
   let legalMoves = []; // populated by engine for hint dots
   let pendingPromoFrom = null;
@@ -816,6 +920,7 @@
   // Board Setup / Edit Mode State
   let setupMode = false;
   let selectedPalettePiece = 'P';
+  let setupOriginalFen = null;
 
   // Async & Cancellation Controllers
   let currentEvalScore = 0;
@@ -869,8 +974,10 @@
     moveHistory = [];
     historyPly = 0;
     lastMove = null;
+    bestMoveHint = null;
     selectedSq = null;
     enPassantSq = null;
+    castlingRights = "KQkq";
     gameOver = false;
     legalMoves = [];
     pendingPromoFrom = null;
@@ -880,6 +987,7 @@
     updateFenUI();
     updateEvalBar(0);
     document.getElementById("turnIndicator").innerText = "White to Move";
+    syncCastlingControls();
     fetchLegalMoves();
     requestPositionEval();
   }
@@ -991,11 +1099,17 @@
     }
   }
 
-  function requestPositionEval() {
+  function requestPositionEval(useSelectedDepth = false) {
     if (evalAbortController) {
       evalAbortController.abort();
     }
     evalAbortController = new AbortController();
+
+    // Instant client evaluation ensures eval bar is always active
+    const clientScore = evaluateClientBoard(board);
+    updateEvalBar(clientScore);
+
+    if (!isServerAvailable()) return;
 
     fetch(getApiUrl("/api/evaluate"), {
       method: "POST",
@@ -1003,7 +1117,11 @@
       body: JSON.stringify({
         fen: baseFen,
         moves: moveHistory,
-        depth: 10
+        // Telemetry is deliberately capped so it never delays the selected
+        // move-search depth.
+        depth: useSelectedDepth
+          ? (parseInt(document.getElementById("rngDepth").value) || 10)
+          : Math.min(parseInt(document.getElementById("rngDepth").value) || 10, 3)
       }),
       signal: evalAbortController.signal
     })
@@ -1014,10 +1132,6 @@
         if (data.pv) {
           const pvElem = document.getElementById("statPv");
           if (pvElem) pvElem.innerText = data.pv;
-        }
-        if (data.depth) {
-          const dElem = document.getElementById("statDepth");
-          if (dElem) dElem.innerText = data.depth;
         }
         if (data.nps) {
           const nElem = document.getElementById("statNps");
@@ -1051,6 +1165,8 @@
 
         if (selectedSq === sqName) sqDiv.classList.add("selected");
         if (lastMove && (lastMove.from === sqName || lastMove.to === sqName)) sqDiv.classList.add("last-move");
+        if (bestMoveHint && bestMoveHint.from === sqName) sqDiv.classList.add("best-move-from");
+        if (bestMoveHint && bestMoveHint.to === sqName) sqDiv.classList.add("best-move-to");
         if (dragFromSq === sqName) sqDiv.classList.add("drag-from");
 
         // Coordinates
@@ -1098,6 +1214,7 @@
 
         // Click handler
         sqDiv.addEventListener("click", () => handleSquareClick(sqName, row, col));
+        sqDiv.addEventListener("contextmenu", (event) => handleSquareContextMenu(event, row, col));
 
         // Drag-and-drop handlers
         sqDiv.addEventListener("mousedown", (e) => handleDragStart(e, sqName, row, col));
@@ -1105,6 +1222,66 @@
         container.appendChild(sqDiv);
       }
     }
+
+    updateCapturedMaterial();
+  }
+
+  function updateCapturedMaterial() {
+    const inventory = {
+      P: { total: 8, value: 1 }, N: { total: 2, value: 3 },
+      B: { total: 2, value: 3 }, R: { total: 2, value: 5 },
+      Q: { total: 1, value: 9 }
+    };
+
+    const present = { w: {}, b: {} };
+    for (const piece of Object.keys(inventory)) {
+      present.w[piece] = 0;
+      present.b[piece] = 0;
+    }
+
+    for (const row of board) {
+      for (const piece of row) {
+        if (!piece || piece.toUpperCase() === 'K') continue;
+        const type = piece.toUpperCase();
+        if (inventory[type]) {
+          present[piece === type ? 'w' : 'b'][type]++;
+        }
+      }
+    }
+
+    const renderMissing = (color, piecesId, materialId) => {
+      const piecesElem = document.getElementById(piecesId);
+      const materialElem = document.getElementById(materialId);
+      if (!piecesElem || !materialElem) return;
+
+      piecesElem.innerHTML = '';
+      let material = 0;
+      for (const type of ['Q', 'R', 'B', 'N', 'P']) {
+        const missing = Math.max(0, inventory[type].total - present[color][type]);
+        material += missing * inventory[type].value;
+        const symbol = color === 'w' ? type : type.toLowerCase();
+        for (let i = 0; i < missing; i++) {
+          const image = document.createElement('img');
+          image.className = 'captured-piece';
+          image.src = PIECE_IMAGES[symbol];
+          image.alt = color === 'w' ? `Missing white ${type}` : `Missing black ${type}`;
+          piecesElem.appendChild(image);
+        }
+      }
+
+      if (material === 0) {
+        const empty = document.createElement('span');
+        empty.className = 'captured-empty';
+        empty.textContent = 'No material lost';
+        piecesElem.appendChild(empty);
+        materialElem.textContent = '';
+      } else {
+        materialElem.textContent = `−${material}`;
+      }
+    };
+
+    renderMissing('b', 'capturedBlack', 'materialBlack');
+    renderMissing('w', 'capturedWhite', 'materialWhite');
   }
 
   // --- Drag-and-Drop ---
@@ -1298,6 +1475,15 @@
     }
   }
 
+  function handleSquareContextMenu(event, r, c) {
+    if (!setupMode) return;
+    event.preventDefault();
+    board[r][c] = '';
+    selectedSq = null;
+    renderBoard();
+    updateFenUI();
+  }
+
   // --- Promotion Dialog ---
   function showPromotionDialog(fromSq, toSq, color) {
     pendingPromoFrom = fromSq;
@@ -1355,12 +1541,422 @@
     });
   }
 
-  // --- Fetch legal moves from the engine for hint dots ---
+  // --- In-Browser Chess Rule Engine & Search Fallback (Zero-Dependency) ---
+  const CLIENT_PIECE_VALS = {
+    'p': 100, 'n': 320, 'b': 330, 'r': 500, 'q': 900, 'k': 20000,
+    'P': 100, 'N': 320, 'B': 330, 'R': 500, 'Q': 900, 'K': 20000
+  };
+
+  const CLIENT_PST_P = [
+     0,  0,  0,  0,  0,  0,  0,  0,
+    50, 50, 50, 50, 50, 50, 50, 50,
+    10, 10, 20, 30, 30, 20, 10, 10,
+     5,  5, 10, 25, 25, 10,  5,  5,
+     0,  0,  0, 20, 20,  0,  0,  0,
+     5, -5,-10,  0,  0,-10, -5,  5,
+     5, 10, 10,-20,-20, 10, 10,  5,
+     0,  0,  0,  0,  0,  0,  0,  0
+  ];
+
+  const CLIENT_PST_N = [
+   -50,-40,-30,-30,-30,-30,-40,-50,
+   -40,-20,  0,  0,  0,  0,-20,-40,
+   -30,  0, 10, 15, 15, 10,  0,-30,
+   -30,  5, 15, 20, 20, 15,  5,-30,
+   -30,  0, 15, 20, 20, 15,  0,-30,
+   -30,  5, 10, 15, 15, 10,  5,-30,
+   -40,-20,  0,  5,  5,  0,-20,-40,
+   -50,-40,-30,-30,-30,-30,-40,-50
+  ];
+
+  function isSquareAttackedBy(r, c, byColor, boardState) {
+    const pawnDir = byColor === 'w' ? -1 : 1;
+    const pr = r - pawnDir;
+    if (pr >= 0 && pr < 8) {
+      const enemyPawn = byColor === 'w' ? 'P' : 'p';
+      if (c > 0 && boardState[pr][c - 1] === enemyPawn) return true;
+      if (c < 7 && boardState[pr][c + 1] === enemyPawn) return true;
+    }
+
+    const enemyKnight = byColor === 'w' ? 'N' : 'n';
+    const knightOffsets = [
+      [-2, -1], [-2, 1], [-1, -2], [-1, 2],
+      [1, -2], [1, 2], [2, -1], [2, 1]
+    ];
+    for (const [dr, dc] of knightOffsets) {
+      const nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+        if (boardState[nr][nc] === enemyKnight) return true;
+      }
+    }
+
+    const enemyKing = byColor === 'w' ? 'K' : 'k';
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+          if (boardState[nr][nc] === enemyKing) return true;
+        }
+      }
+    }
+
+    const enemyRook = byColor === 'w' ? 'R' : 'r';
+    const enemyQueen = byColor === 'w' ? 'Q' : 'q';
+    const enemyBishop = byColor === 'w' ? 'B' : 'b';
+
+    const orthoDirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    for (const [dr, dc] of orthoDirs) {
+      let nr = r + dr, nc = c + dc;
+      while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+        const p = boardState[nr][nc];
+        if (p !== '') {
+          if (p === enemyRook || p === enemyQueen) return true;
+          break;
+        }
+        nr += dr; nc += dc;
+      }
+    }
+
+    const diagDirs = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+    for (const [dr, dc] of diagDirs) {
+      let nr = r + dr, nc = c + dc;
+      while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+        const p = boardState[nr][nc];
+        if (p !== '') {
+          if (p === enemyBishop || p === enemyQueen) return true;
+          break;
+        }
+        nr += dr; nc += dc;
+      }
+    }
+    return false;
+  }
+
+  function findKingOnBoard(boardState, color) {
+    const target = color === 'w' ? 'K' : 'k';
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        if (boardState[r][c] === target) return [r, c];
+      }
+    }
+    return null;
+  }
+
+  function simulateMoveOnBoard(boardState, move, isWhite) {
+    const fromC = move.charCodeAt(0) - 97;
+    const fromR = 8 - parseInt(move[1]);
+    const toC = move.charCodeAt(2) - 97;
+    const toR = 8 - parseInt(move[3]);
+    const promo = move.length >= 5 ? move[4] : null;
+
+    const nextBoard = boardState.map(row => [...row]);
+    let piece = nextBoard[fromR][fromC];
+
+    // Castling rook move
+    if (piece.toUpperCase() === 'K') {
+      if (fromC === 4 && toC === 6) {
+        nextBoard[fromR][5] = nextBoard[fromR][7];
+        nextBoard[fromR][7] = '';
+      } else if (fromC === 4 && toC === 2) {
+        nextBoard[fromR][3] = nextBoard[fromR][0];
+        nextBoard[fromR][0] = '';
+      }
+    }
+
+    // En passant capture
+    if (piece.toUpperCase() === 'P' && toC !== fromC && nextBoard[toR][toC] === '') {
+      nextBoard[fromR][toC] = '';
+    }
+
+    if (promo) {
+      piece = isWhite ? promo.toUpperCase() : promo.toLowerCase();
+    }
+
+    nextBoard[toR][toC] = piece;
+    nextBoard[fromR][fromC] = '';
+    return nextBoard;
+  }
+
+  function getClientLegalMoves(boardState, side, castling, ep) {
+    const moves = [];
+    const isWhite = side === 'w';
+    const pawnDir = isWhite ? -1 : 1;
+    const startPawnRow = isWhite ? 6 : 1;
+    const promoRow = isWhite ? 0 : 7;
+    const colNames = ['a','b','c','d','e','f','g','h'];
+    const enemyCol = isWhite ? 'b' : 'w';
+
+    function toSq(r, c) { return colNames[c] + (8 - r); }
+
+    const pseudo = [];
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const p = boardState[r][c];
+        if (!p) continue;
+        const isPieceWhite = p === p.toUpperCase();
+        if (isPieceWhite !== isWhite) continue;
+
+        const upper = p.toUpperCase();
+        const fromSq = toSq(r, c);
+
+        if (upper === 'P') {
+          const nr1 = r + pawnDir;
+          if (nr1 >= 0 && nr1 < 8 && boardState[nr1][c] === '') {
+            if (nr1 === promoRow) {
+              pseudo.push(fromSq + toSq(nr1, c) + 'q');
+              pseudo.push(fromSq + toSq(nr1, c) + 'r');
+              pseudo.push(fromSq + toSq(nr1, c) + 'b');
+              pseudo.push(fromSq + toSq(nr1, c) + 'n');
+            } else {
+              pseudo.push(fromSq + toSq(nr1, c));
+              if (r === startPawnRow) {
+                const nr2 = r + 2 * pawnDir;
+                if (boardState[nr2][c] === '') {
+                  pseudo.push(fromSq + toSq(nr2, c));
+                }
+              }
+            }
+          }
+
+          for (const dc of [-1, 1]) {
+            const nc = c + dc;
+            if (nc >= 0 && nc < 8 && nr1 >= 0 && nr1 < 8) {
+              const destPiece = boardState[nr1][nc];
+              const destSq = toSq(nr1, nc);
+              const isEnemy = destPiece && (destPiece === destPiece.toUpperCase()) !== isWhite;
+              const isEp = ep && destSq === ep;
+
+              if (isEnemy || isEp) {
+                if (nr1 === promoRow) {
+                  pseudo.push(fromSq + destSq + 'q');
+                  pseudo.push(fromSq + destSq + 'r');
+                  pseudo.push(fromSq + destSq + 'b');
+                  pseudo.push(fromSq + destSq + 'n');
+                } else {
+                  pseudo.push(fromSq + destSq);
+                }
+              }
+            }
+          }
+        } else if (upper === 'N') {
+          const knightOffsets = [
+            [-2, -1], [-2, 1], [-1, -2], [-1, 2],
+            [1, -2], [1, 2], [2, -1], [2, 1]
+          ];
+          for (const [dr, dc] of knightOffsets) {
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+              const target = boardState[nr][nc];
+              if (!target || (target === target.toUpperCase()) !== isWhite) {
+                pseudo.push(fromSq + toSq(nr, nc));
+              }
+            }
+          }
+        } else if (upper === 'B' || upper === 'R' || upper === 'Q') {
+          const dirs = [];
+          if (upper === 'B' || upper === 'Q') dirs.push([-1,-1], [-1,1], [1,-1], [1,1]);
+          if (upper === 'R' || upper === 'Q') dirs.push([-1,0], [1,0], [0,-1], [0,1]);
+
+          for (const [dr, dc] of dirs) {
+            let nr = r + dr, nc = c + dc;
+            while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+              const target = boardState[nr][nc];
+              if (!target) {
+                pseudo.push(fromSq + toSq(nr, nc));
+              } else {
+                if ((target === target.toUpperCase()) !== isWhite) {
+                  pseudo.push(fromSq + toSq(nr, nc));
+                }
+                break;
+              }
+              nr += dr; nc += dc;
+            }
+          }
+        } else if (upper === 'K') {
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              if (dr === 0 && dc === 0) continue;
+              const nr = r + dr, nc = c + dc;
+              if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                const target = boardState[nr][nc];
+                if (!target || (target === target.toUpperCase()) !== isWhite) {
+                  pseudo.push(fromSq + toSq(nr, nc));
+                }
+              }
+            }
+          }
+
+          if (isWhite && r === 7 && c === 4) {
+            if (castling.includes('K') && boardState[7][5] === '' && boardState[7][6] === '' && boardState[7][7] === 'R') {
+              if (!isSquareAttackedBy(7, 4, 'b', boardState) && !isSquareAttackedBy(7, 5, 'b', boardState) && !isSquareAttackedBy(7, 6, 'b', boardState)) {
+                pseudo.push("e1g1");
+              }
+            }
+            if (castling.includes('Q') && boardState[7][3] === '' && boardState[7][2] === '' && boardState[7][1] === '' && boardState[7][0] === 'R') {
+              if (!isSquareAttackedBy(7, 4, 'b', boardState) && !isSquareAttackedBy(7, 3, 'b', boardState) && !isSquareAttackedBy(7, 2, 'b', boardState)) {
+                pseudo.push("e1c1");
+              }
+            }
+          } else if (!isWhite && r === 0 && c === 4) {
+            if (castling.includes('k') && boardState[0][5] === '' && boardState[0][6] === '' && boardState[0][7] === 'r') {
+              if (!isSquareAttackedBy(0, 4, 'w', boardState) && !isSquareAttackedBy(0, 5, 'w', boardState) && !isSquareAttackedBy(0, 6, 'w', boardState)) {
+                pseudo.push("e8g8");
+              }
+            }
+            if (castling.includes('q') && boardState[0][3] === '' && boardState[0][2] === '' && boardState[0][1] === '' && boardState[0][0] === 'r') {
+              if (!isSquareAttackedBy(0, 4, 'w', boardState) && !isSquareAttackedBy(0, 3, 'w', boardState) && !isSquareAttackedBy(0, 2, 'w', boardState)) {
+                pseudo.push("e8c8");
+              }
+            }
+          }
+        }
+      }
+    }
+
+    for (const m of pseudo) {
+      const sim = simulateMoveOnBoard(boardState, m, isWhite);
+      const kingPos = findKingOnBoard(sim, side);
+      if (!kingPos) continue;
+      if (!isSquareAttackedBy(kingPos[0], kingPos[1], enemyCol, sim)) {
+        moves.push(m);
+      }
+    }
+    return moves;
+  }
+
+  function evaluateClientBoard(boardState) {
+    let score = 0;
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const p = boardState[r][c];
+        if (!p) continue;
+        const isWhite = p === p.toUpperCase();
+        const val = CLIENT_PIECE_VALS[p] || 0;
+        let pst = 0;
+        const sqIdx = isWhite ? (r * 8 + c) : ((7 - r) * 8 + c);
+        const upper = p.toUpperCase();
+        if (upper === 'P') pst = CLIENT_PST_P[sqIdx] || 0;
+        else if (upper === 'N') pst = CLIENT_PST_N[sqIdx] || 0;
+        const pieceTotal = val + pst;
+        score += isWhite ? pieceTotal : -pieceTotal;
+      }
+    }
+    return score;
+  }
+
+  let clientSearchNodeCount = 0;
+  function clientAlphaBeta(boardState, depth, alpha, beta, isWhite, castling, ep) {
+    clientSearchNodeCount++;
+    const side = isWhite ? 'w' : 'b';
+    const moves = getClientLegalMoves(boardState, side, castling, ep);
+
+    if (moves.length === 0) {
+      const kingPos = findKingOnBoard(boardState, side);
+      const enemy = isWhite ? 'b' : 'w';
+      if (kingPos && isSquareAttackedBy(kingPos[0], kingPos[1], enemy, boardState)) {
+        return isWhite ? -29000 : 29000;
+      }
+      return 0;
+    }
+
+    if (depth <= 0) {
+      return evaluateClientBoard(boardState);
+    }
+
+    moves.sort((a, b) => {
+      const toA = [8 - parseInt(a[3]), a.charCodeAt(2) - 97];
+      const toB = [8 - parseInt(b[3]), b.charCodeAt(2) - 97];
+      const capA = boardState[toA[0]][toA[1]] ? 1 : 0;
+      const capB = boardState[toB[0]][toB[1]] ? 1 : 0;
+      return capB - capA;
+    });
+
+    if (isWhite) {
+      let maxEval = -Infinity;
+      for (const m of moves) {
+        const nextBoard = simulateMoveOnBoard(boardState, m, true);
+        const ev = clientAlphaBeta(nextBoard, depth - 1, alpha, beta, false, castling, null);
+        maxEval = Math.max(maxEval, ev);
+        alpha = Math.max(alpha, ev);
+        if (beta <= alpha) break;
+      }
+      return maxEval;
+    } else {
+      let minEval = Infinity;
+      for (const m of moves) {
+        const nextBoard = simulateMoveOnBoard(boardState, m, false);
+        const ev = clientAlphaBeta(nextBoard, depth - 1, alpha, beta, true, castling, null);
+        minEval = Math.min(minEval, ev);
+        beta = Math.min(beta, ev);
+        if (beta <= alpha) break;
+      }
+      return minEval;
+    }
+  }
+
+  function searchClientBestMove(boardState, side, castling, ep, depth = 3) {
+    clientSearchNodeCount = 0;
+    const t0 = performance.now();
+    const isWhite = side === 'w';
+    const moves = getClientLegalMoves(boardState, side, castling, ep);
+    if (moves.length === 0) return null;
+
+    let bestMove = moves[0];
+    let bestScore = isWhite ? -Infinity : Infinity;
+    let alpha = -Infinity;
+    let beta = Infinity;
+
+    moves.sort((a, b) => {
+      const toA = [8 - parseInt(a[3]), a.charCodeAt(2) - 97];
+      const toB = [8 - parseInt(b[3]), b.charCodeAt(2) - 97];
+      const capA = boardState[toA[0]][toA[1]] ? 1 : 0;
+      const capB = boardState[toB[0]][toB[1]] ? 1 : 0;
+      return capB - capA;
+    });
+
+    for (const m of moves) {
+      const nextBoard = simulateMoveOnBoard(boardState, m, isWhite);
+      const score = clientAlphaBeta(nextBoard, depth - 1, alpha, beta, !isWhite, castling, null);
+      if (isWhite) {
+        if (score > bestScore) {
+          bestScore = score;
+          bestMove = m;
+        }
+        alpha = Math.max(alpha, score);
+      } else {
+        if (score < bestScore) {
+          bestScore = score;
+          bestMove = m;
+        }
+        beta = Math.min(beta, score);
+      }
+    }
+
+    const dt = Math.max(1, Math.round(performance.now() - t0));
+    const nps = Math.round((clientSearchNodeCount / (dt / 1000)));
+    return {
+      bestmove: bestMove,
+      score: bestScore,
+      depth: depth,
+      nodes: clientSearchNodeCount,
+      nps: nps,
+      time: dt
+    };
+  }
+
+  // --- Fetch legal moves from client rules and engine for hint dots ---
   function fetchLegalMoves() {
     if (legalMovesAbortController) {
       legalMovesAbortController.abort();
     }
     legalMovesAbortController = new AbortController();
+
+    // Immediately populate client-side legal moves so the board is 100% playable anywhere
+    legalMoves = getClientLegalMoves(board, sideToMove, castlingRights, enPassantSq);
+    renderBoard();
+
+    if (!isServerAvailable()) return;
 
     fetch(getApiUrl("/api/legalmoves"), {
       method: "POST",
@@ -1373,12 +1969,12 @@
     })
     .then(res => res.json())
     .then(data => {
-      if (data && data.moves) {
+      if (data && data.moves && data.moves.length > 0) {
         legalMoves = data.moves;
         renderBoard();
       }
     })
-    .catch(() => { /* silently ignore if aborted */ });
+    .catch(() => { /* silently ignore if offline */ });
   }
 
   function applyMove(uciMove) {
@@ -1397,6 +1993,18 @@
     const movingPiece = board[fromRow][fromCol];
     const targetPiece = board[toRow][toCol];
     let isCapture = !!targetPiece;
+
+    // Rights are lost when a king or rook moves, or when an original rook is captured.
+    if (movingPiece === 'K') castlingRights = castlingRights.replace(/[KQ]/g, '');
+    if (movingPiece === 'k') castlingRights = castlingRights.replace(/[kq]/g, '');
+    if (movingPiece === 'R' && fromRow === 7 && fromCol === 0) castlingRights = castlingRights.replace('Q', '');
+    if (movingPiece === 'R' && fromRow === 7 && fromCol === 7) castlingRights = castlingRights.replace('K', '');
+    if (movingPiece === 'r' && fromRow === 0 && fromCol === 0) castlingRights = castlingRights.replace('q', '');
+    if (movingPiece === 'r' && fromRow === 0 && fromCol === 7) castlingRights = castlingRights.replace('k', '');
+    if (targetPiece === 'R' && toRow === 7 && toCol === 0) castlingRights = castlingRights.replace('Q', '');
+    if (targetPiece === 'R' && toRow === 7 && toCol === 7) castlingRights = castlingRights.replace('K', '');
+    if (targetPiece === 'r' && toRow === 0 && toCol === 0) castlingRights = castlingRights.replace('q', '');
+    if (targetPiece === 'r' && toRow === 0 && toCol === 7) castlingRights = castlingRights.replace('k', '');
 
     // Castling rook movements
     if (movingPiece && movingPiece.toUpperCase() === 'K') {
@@ -1443,6 +2051,7 @@
     board[fromRow][fromCol] = '';
 
     lastMove = { from: uciMove.substring(0, 2), to: uciMove.substring(2, 4) };
+    bestMoveHint = null;
     moveHistory.push(uciMove);
     historyPly++;
     sideToMove = (sideToMove === 'w') ? 'b' : 'w';
@@ -1453,8 +2062,10 @@
       renderBoard();
       updateMoveHistoryUI();
       updateFenUI();
+      syncCastlingControls();
       fetchLegalMoves();
       requestPositionEval();
+      checkGameStatus();
 
       // Auto-reply with ChessMinds if enabled
       if (document.getElementById("chkAutoEngine").checked && sideToMove === 'b') {
@@ -1464,12 +2075,56 @@
     }
   }
 
-  function requestEngineMove(manual) {
+  function executeBrowserEngineMove(depth, playMove, currentReqId) {
+    if (currentReqId !== engineRequestId) return;
+    setEngineStatus("Thinking (In-Browser Engine)...", true);
+    setTimeout(() => {
+      if (currentReqId !== engineRequestId) return;
+      const searchDepth = Math.max(1, Math.min(depth, 3));
+      const res = searchClientBestMove(board, sideToMove, castlingRights, enPassantSq, searchDepth);
+      setEngineStatus(isServerAvailable() ? "Engine Ready" : "In-Browser Engine Ready", false);
+
+      if (res && res.bestmove) {
+        document.getElementById("statDepth").innerText = res.depth;
+        document.getElementById("statNps").innerText = (res.nps || 0).toLocaleString();
+        document.getElementById("statBestMove").innerText = res.bestmove;
+        document.getElementById("statPv").innerText = res.bestmove;
+
+        updateEvalBar(res.score || 0);
+
+        if (playMove) {
+          applyMove(res.bestmove);
+        } else {
+          bestMoveHint = { from: res.bestmove.substring(0, 2), to: res.bestmove.substring(2, 4) };
+          setEngineStatus(`Showing best move: ${res.bestmove}`, false);
+          renderBoard();
+        }
+      } else {
+        checkGameStatus();
+      }
+    }, 40);
+  }
+
+  function requestEngineMove(manual, playMove = true) {
     if (gameOver) return;
     const depth = parseInt(document.getElementById("rngDepth").value) || 6;
-    setEngineStatus("Thinking...", true);
+    const thinkSeconds = Math.max(0, Math.min(60, Number(document.getElementById("engineTimeSeconds").value) || 0));
+    if (evalAbortController) {
+      evalAbortController.abort();
+      evalAbortController = null;
+    }
+    if (legalMovesAbortController) {
+      legalMovesAbortController.abort();
+      legalMovesAbortController = null;
+    }
+    setEngineStatus(thinkSeconds ? `Thinking for ${thinkSeconds.toFixed(1)}s...` : `Thinking (depth ${depth})...`, true);
 
     const currentReqId = ++engineRequestId;
+
+    if (!isServerAvailable()) {
+      executeBrowserEngineMove(depth, playMove, currentReqId);
+      return;
+    }
 
     fetch(getApiUrl("/api/move"), {
       method: "POST",
@@ -1477,7 +2132,8 @@
       body: JSON.stringify({
         fen: baseFen,
         moves: moveHistory,
-        depth: depth
+        depth: depth,
+        movetime: thinkSeconds ? Math.round(thinkSeconds * 1000) : null
       })
     })
     .then(res => res.json())
@@ -1487,7 +2143,7 @@
 
       setEngineStatus("Engine Ready", false);
       if (data.bestmove && data.bestmove !== "(none)" && data.bestmove !== "0000") {
-        document.getElementById("statDepth").innerText = data.depth;
+        document.getElementById("statDepth").innerText = data.depth || data.requested_depth || depth;
         document.getElementById("statNps").innerText = (data.nps || 0).toLocaleString();
         document.getElementById("statBestMove").innerText = data.bestmove;
         document.getElementById("statPv").innerText = data.pv || data.bestmove;
@@ -1495,7 +2151,13 @@
         // Update the vertical evaluation bar
         updateEvalBar(data.score || 0);
 
-        applyMove(data.bestmove);
+        if (playMove) {
+          applyMove(data.bestmove);
+        } else {
+          bestMoveHint = { from: data.bestmove.substring(0, 2), to: data.bestmove.substring(2, 4) };
+          setEngineStatus(`Showing best move: ${data.bestmove}`, false);
+          renderBoard();
+        }
       } else if (data.gameover || data.bestmove === "(none)" || data.bestmove === "0000") {
         // Game over
         showGameResult(data);
@@ -1503,9 +2165,17 @@
     })
     .catch(err => {
       if (currentReqId !== engineRequestId) return;
-      setEngineStatus("Offline (Check server.py)", false);
-      console.error(err);
+      // Fallback to in-browser engine if backend is offline
+      executeBrowserEngineMove(depth, playMove, currentReqId);
     });
+  }
+
+  function handleAutoEngineChange() {
+    const autoEngine = document.getElementById("chkAutoEngine").checked;
+    if (autoEngine && sideToMove === 'b' && !gameOver) {
+      if (engineTimer) clearTimeout(engineTimer);
+      engineTimer = setTimeout(() => requestEngineMove(false), 0);
+    }
   }
 
   function showGameResult(data) {
@@ -1524,6 +2194,15 @@
     } else if (data.result === "stalemate") {
       title = "Stalemate";
       subtitle = "Draw by stalemate";
+    } else if (data.result === "threefold-repetition") {
+      title = "Draw";
+      subtitle = "Draw by threefold repetition";
+    } else if (data.result === "seventy-five-move-rule") {
+      title = "Draw";
+      subtitle = "Draw by the 75-move rule";
+    } else if (data.result === "insufficient-material") {
+      title = "Draw";
+      subtitle = "Draw by insufficient material";
     } else {
       title = "Game Over";
       subtitle = data.result || "No legal moves";
@@ -1534,7 +2213,40 @@
     boardArea.appendChild(banner);
   }
 
+  function checkGameStatus() {
+    const currentMoves = getClientLegalMoves(board, sideToMove, castlingRights, enPassantSq);
+    if (currentMoves.length === 0) {
+      const kingPos = findKingOnBoard(board, sideToMove);
+      const enemy = sideToMove === 'w' ? 'b' : 'w';
+      if (kingPos && isSquareAttackedBy(kingPos[0], kingPos[1], enemy, board)) {
+        showGameResult({ result: "checkmate" });
+      } else {
+        showGameResult({ result: "stalemate" });
+      }
+      return;
+    }
+
+    if (!isServerAvailable()) return;
+
+    const movesAtRequest = moveHistory.length;
+    const fenAtRequest = baseFen;
+    fetch(getApiUrl("/api/gamestatus"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fen: fenAtRequest, moves: moveHistory })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (movesAtRequest !== moveHistory.length || fenAtRequest !== baseFen || !data || data.status === "ongoing") return;
+      showGameResult({ result: data.status });
+    })
+    .catch(() => {});
+  }
+
   function setEngineStatus(text, busy) {
+    if (text === "Engine Ready" && !isServerAvailable()) {
+      text = "In-Browser Engine Ready";
+    }
     const dot = document.getElementById("engineStatusDot");
     dot.className = "status-indicator" + (busy ? " busy" : "");
     document.getElementById("engineStatusText").innerText = text;
@@ -1582,21 +2294,25 @@
       if (r < 7) fen += "/";
     }
 
-    // Auto-detect available castling rights based on piece placement
-    let castling = "";
-    if (board[7][4] === 'K') {
-      if (board[7][7] === 'R') castling += "K";
-      if (board[7][0] === 'R') castling += "Q";
-    }
-    if (board[0][4] === 'k') {
-      if (board[0][7] === 'r') castling += "k";
-      if (board[0][0] === 'r') castling += "q";
-    }
-    if (!castling) castling = "-";
+    const castling = castlingRights || "-";
 
     const ep = enPassantSq || "-";
     fen += ` ${sideToMove} ${castling} ${ep} 0 1`;
     document.getElementById("fenInput").value = fen;
+  }
+
+  function syncCastlingControls() {
+    for (const right of ['K', 'Q', 'k', 'q']) {
+      const control = document.getElementById(`castle${right}`);
+      if (control) control.checked = castlingRights.includes(right);
+    }
+  }
+
+  function updateCastlingRightsFromControls() {
+    castlingRights = ['K', 'Q', 'k', 'q']
+      .filter(right => document.getElementById(`castle${right}`).checked)
+      .join('');
+    updateFenUI();
   }
 
   function copyFen() {
@@ -1619,6 +2335,8 @@
         ['R','N','B','Q','K','B','N','R']
       ];
       sideToMove = 'w';
+      castlingRights = 'KQkq';
+      enPassantSq = null;
       return true;
     }
     const parts = fen.trim().split(/\s+/);
@@ -1634,14 +2352,20 @@
         if (ch >= '1' && ch <= '8') {
           const count = parseInt(ch);
           for (let k = 0; k < count; k++) newBoard[r][col++] = '';
-        } else {
+        } else if ('prnbqkPRNBQK'.includes(ch)) {
           newBoard[r][col++] = ch;
+        } else {
+          return false;
         }
       }
       if (col !== 8) return false;
     }
     board = newBoard;
     sideToMove = (parts[1] === 'b') ? 'b' : 'w';
+    castlingRights = (parts[2] && parts[2] !== '-')
+      ? ['K', 'Q', 'k', 'q'].filter(right => parts[2].includes(right)).join('')
+      : '';
+    enPassantSq = parts[3] && /^[a-h][36]$/.test(parts[3]) ? parts[3] : null;
     return true;
   }
 
@@ -1656,10 +2380,11 @@
     moveHistory = [];
     historyPly = 0;
     lastMove = null;
+    bestMoveHint = null;
     selectedSq = null;
-    enPassantSq = null;
     gameOver = false;
     document.getElementById("turnIndicator").innerText = (sideToMove === 'w') ? "White to Move" : "Black to Move";
+    syncCastlingControls();
     renderBoard();
     updateMoveHistoryUI();
     updateFenUI();
@@ -1669,6 +2394,10 @@
 
   // --- Board Setup Mode Functions (Piece Editor) ---
   function toggleSetupMode() {
+    if (setupMode) {
+      setupCancel();
+      return;
+    }
     setupMode = !setupMode;
     const setupCont = document.getElementById("setupContainer");
     const setupBtn = document.getElementById("btnSetupMode");
@@ -1680,12 +2409,14 @@
       if (evalAbortController) { evalAbortController.abort(); evalAbortController = null; }
       if (legalMovesAbortController) { legalMovesAbortController.abort(); legalMovesAbortController = null; }
 
+      setupOriginalFen = document.getElementById("fenInput").value;
       setupCont.style.display = "flex";
       setupBtn.innerText = "Exit Setup";
       setupBtn.style.background = "var(--accent)";
       setupBtn.style.color = "#000";
       selectPalettePiece('P');
       document.getElementById("setupTurnSelect").value = sideToMove;
+      syncCastlingControls();
     } else {
       setupCont.style.display = "none";
       setupBtn.innerText = "Setup Board";
@@ -1709,6 +2440,8 @@
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) board[r][c] = '';
     }
+    castlingRights = '';
+    syncCastlingControls();
     renderBoard();
     updateFenUI();
   }
@@ -1717,6 +2450,7 @@
     loadFenIntoBoard("startpos");
     sideToMove = 'w';
     document.getElementById("setupTurnSelect").value = 'w';
+    syncCastlingControls();
     renderBoard();
     updateFenUI();
   }
@@ -1747,7 +2481,7 @@
     selectedSq = null;
     gameOver = false;
 
-    toggleSetupMode(); // exits setup mode
+    exitSetupMode();
     document.getElementById("turnIndicator").innerText = (sideToMove === 'w') ? "White to Move" : "Black to Move";
     updateMoveHistoryUI();
     fetchLegalMoves();
@@ -1755,11 +2489,23 @@
   }
 
   function setupCancel() {
-    loadFenIntoBoard(baseFen);
-    toggleSetupMode();
+    loadFenIntoBoard(setupOriginalFen || baseFen);
+    exitSetupMode();
     updateFenUI();
     fetchLegalMoves();
     requestPositionEval();
+  }
+
+  function exitSetupMode() {
+    setupMode = false;
+    setupOriginalFen = null;
+    const setupCont = document.getElementById("setupContainer");
+    const setupBtn = document.getElementById("btnSetupMode");
+    setupCont.style.display = "none";
+    setupBtn.innerText = "Setup Board";
+    setupBtn.style.background = "";
+    setupBtn.style.color = "";
+    renderBoard();
   }
 
   function toggleFlip() {
@@ -1770,6 +2516,16 @@
 
   function updateDepthLabel() {
     document.getElementById("lblDepth").innerText = document.getElementById("rngDepth").value;
+  }
+
+  function requestSelectedEngineAction() {
+    const makeMove = document.querySelector('input[name="engineMoveMode"]:checked').value === 'make';
+    requestEngineMove(true, makeMove);
+  }
+
+  function updateEngineActionLabel() {
+    const makeMove = document.querySelector('input[name="engineMoveMode"]:checked').value === 'make';
+    document.getElementById("btnEngineMove").innerText = makeMove ? "Play Engine Move" : "Show Best Move";
   }
 
   function newGame() {

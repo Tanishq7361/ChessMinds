@@ -86,8 +86,39 @@ void test_random_walk_legality() {
     std::cout << "  --> PASS: All 100 random moves strictly legal, king safe, Zobrist 100% verified.\n";
 }
 
+void test_search_node_limit() {
+    std::cout << "[TEST] 3. UCI node-limit enforcement and legal fallback...\n";
+    Board board;
+    TranspositionTable tt(4);
+    Searcher searcher(tt);
+    SearchLimits limits;
+    limits.max_depth = 64;
+    limits.max_nodes = 1;
+
+    std::stringstream output;
+    std::streambuf* previous_output = std::cout.rdbuf(output.rdbuf());
+    const Move best = searcher.start_search(board, limits);
+    std::cout.rdbuf(previous_output);
+
+    assert(searcher.nodes_searched() == limits.max_nodes);
+    assert(!best.is_null());
+    assert(MoveGen::is_legal_move(board, best));
+    std::cout << "  --> PASS: Search stopped at the exact node budget and returned a legal move.\n";
+}
+
+void test_en_passant_see_xray() {
+    std::cout << "[TEST] 4. En-passant SEE reveals slider recaptures...\n";
+    Board board;
+    assert(board.set_fen("4k3/8/8/3pP3/3r4/8/8/4K3 w - d6 0 1"));
+    const Move en_passant = MoveGen::parse_uci_move(board, "e5d6");
+    assert(!en_passant.is_null());
+    assert(board.see(en_passant) == 0);
+    assert(!board.see_ge(en_passant, 1));
+    std::cout << "  --> PASS: SEE accounts for the rook recapture opened by en passant.\n";
+}
+
 void test_uci_integration() {
-    std::cout << "[TEST] 3. Complete UCI Protocol Integration Pipeline...\n";
+    std::cout << "[TEST] 5. Complete UCI Protocol Integration Pipeline...\n";
     Uci uci;
 
     // Redirect cout to stringstream to capture output
@@ -135,6 +166,8 @@ int main() {
 
     test_tactical_regression();
     test_random_walk_legality();
+    test_search_node_limit();
+    test_en_passant_see_xray();
     test_uci_integration();
 
     std::cout << "========================================================\n";
@@ -142,4 +175,3 @@ int main() {
     std::cout << "========================================================\n";
     return 0;
 }
-

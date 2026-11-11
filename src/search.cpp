@@ -11,10 +11,14 @@ namespace {
 // MVV-LVA (Most Valuable Victim - Least Valuable Attacker) piece value array
 // P=100, N=320, B=330, R=500, Q=900, K=10000
 constexpr int MVV_LVA_VALUES[6] = { 100, 320, 330, 500, 900, 10000 };
+constexpr int MAX_SEARCH_PLY = 64;
 
 } // namespace
 
 Searcher::Searcher(TranspositionTable& tt) : tt_(tt) {
+    // 64^4 reply pairs. int16_t is ample after gravity updates and avoids
+    // putting a 16 MiB array in every Searcher object.
+    continuation_history_.assign(64 * 64 * 64 * 64, 0);
     reset();
 }
 
@@ -33,10 +37,22 @@ void Searcher::reset() {
             f.fill(0);
         }
     }
+    std::fill(continuation_history_.begin(), continuation_history_.end(), 0);
     for (auto& row : pv_table_) {
         row.fill(NULL_MOVE);
     }
     pv_length_.fill(0);
+}
+
+void Searcher::update_history(int& entry, int bonus) noexcept {
+    constexpr int MAX_HISTORY = 16'384;
+    bonus = std::clamp(bonus, -MAX_HISTORY, MAX_HISTORY);
+    entry += bonus - entry * std::abs(bonus) / MAX_HISTORY;
+    entry = std::clamp(entry, -MAX_HISTORY, MAX_HISTORY);
+}
+
+size_t Searcher::continuation_index(const Move& previous, const Move& current) const noexcept {
+    return (((static_cast<size_t>(previous.from) * 64 + previous.to) * 64 + current.from) * 64 + current.to);
 }
 
 void Searcher::stop() {
@@ -92,7 +108,13 @@ int Searcher::score_move(const Board& board, const Move& m, Move tt_move, int pl
     }
 
     Color c = board.side_to_move();
-    return std::clamp(history_[c][m.from][m.to], -30000, 30000);
+    int score = history_[c][m.from][m.to];
+    if (!prev.is_null()) {
+        // The continuation term distinguishes a generally good move from a
+        // move that is specifically effective as a reply to the last move.
+        score += continuation_history_[continuation_index(prev, m)];
+    }
+    return std::clamp(score, -30'000, 30'000);
 }
 
 /// @brief Sorts moves in descending order of their heuristic score to maximize alpha-beta pruning cutoffs.
@@ -116,14 +138,34 @@ void Searcher::order_moves(const Board& board, std::vector<Move>& moves, Move tt
 /// @brief Quiescence search continues searching captures at leaf nodes to eliminate the horizon effect.
 int Searcher::quiescence(Board& board, int alpha, int beta, int ply) {
     ++nodes_;
-    // Check time every 2048 nodes
-    if ((nodes_ & 2047) == 0) {
+    if (max_nodes_ > 0 && nodes_ >= max_nodes_) {
+        stop_flag_ = true;
+    }
+    // Check frequently enough that an exact UCI movetime is honoured closely.
+    if ((nodes_ & 255) == 0) {
         check_time_limit();
     }
     if (stop_flag_) return 0;
 
-    if (ply >= 63) {
-        return Evaluator::evaluate(board);
+    if (ply >= MAX_SEARCH_PLY - 1) {
+        const bool at_max_ply_in_check = board.in_check();
+        std::vector<Move> legal_moves;
+        MoveGen::generate_legal_moves(board, legal_moves);
+        if (legal_moves.empty()) {
+            return at_max_ply_in_check ? -Evaluator::MATE_SCORE + ply : Evaluator::DRAW_SCORE;
+        }
+        if (!at_max_ply_in_check) {
+            return Evaluator::evaluate(board);
+        }
+
+        int best_score = -Evaluator::MATE_SCORE;
+        for (const Move& move : legal_moves) {
+            board.make_move(move);
+            const int score = -Evaluator::evaluate(board);
+            board.undo_move();
+            best_score = std::max(best_score, score);
+        }
+        return best_score;
     }
 
     const bool in_check = board.in_check();
@@ -186,12 +228,18 @@ int Searcher::quiescence(Board& board, int alpha, int beta, int ply) {
 
 /// @brief Recursive Negamax algorithm with Alpha-Beta pruning, Null-Move Pruning, and LMR.
 int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, bool is_null_allowed) {
-    if (ply < 64) {
+    if (ply >= MAX_SEARCH_PLY - 1) {
+        return quiescence(board, alpha, beta, ply);
+    }
+    if (ply < MAX_SEARCH_PLY) {
         pv_length_[ply] = ply;
     }
 
     ++nodes_;
-    if ((nodes_ & 2047) == 0) {
+    if (max_nodes_ > 0 && nodes_ >= max_nodes_) {
+        stop_flag_ = true;
+    }
+    if ((nodes_ & 255) == 0) {
         check_time_limit();
     }
     if (stop_flag_) return 0;
@@ -277,6 +325,8 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
     int best_score = -Evaluator::MATE_SCORE;
     Move best_move = NULL_MOVE;
     int moves_searched = 0;
+    std::vector<Move> searched_quiets;
+    searched_quiets.reserve(legal_moves.size());
 
     for (const auto& m : legal_moves) {
         // Late Move Pruning (LMP): near leaf nodes, prune quiet moves after searching the most promising candidates
@@ -293,8 +343,12 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
             }
         }
 
+        const bool quiet = !m.is_capture() && !m.is_promotion();
+        const Move previous_move = board.last_move();
+        const int quiet_history = quiet ? history_[board.side_to_move()][m.from][m.to] : 0;
         board.make_move(m);
         ++moves_searched;
+        if (quiet) searched_quiets.push_back(m);
 
         int score;
         // Principal Variation Search (PVS) with Late Move Reductions (LMR)
@@ -304,15 +358,18 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
         } else {
             // Subsequent moves: null-window scout search with possible LMR
             int reduction = 0;
-            if (moves_searched >= 4 && depth >= 3 && !m.is_capture() && !m.is_promotion() && !in_check) {
+            if (moves_searched >= 3 && depth >= 3 && quiet && !in_check) {
                 // Tactical protection: do not reduce moves that deliver check or are killer moves
                 bool gives_check = board.in_check();
                 bool is_killer = (ply < 64 && (m == killer_moves_[ply][0] || m == killer_moves_[ply][1]));
                 if (!gives_check && !is_killer) {
-                    reduction = 1;
-                    if (moves_searched >= 8 && depth >= 5) {
-                        reduction = 2;
-                    }
+                    // Smooth depth/move-count LMR.  A strong history move is
+                    // reduced less, whereas repeatedly failing moves are
+                    // safely searched later and more shallowly.
+                    reduction = 1 + (depth >= 6 ? 1 : 0) + (moves_searched >= 8 ? 1 : 0);
+                    if (quiet_history > 4'000) --reduction;
+                    if (quiet_history < -4'000) ++reduction;
+                    reduction = std::clamp(reduction, 1, depth - 2);
                 }
             }
 
@@ -342,9 +399,9 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
             alpha = score;
 
             // Update Triangular PV Table
-            if (ply < 64) {
+            if (ply < MAX_SEARCH_PLY) {
                 pv_table_[ply][ply] = m;
-                for (int next_ply = ply + 1; next_ply < pv_length_[ply + 1] && next_ply < 64; ++next_ply) {
+                for (int next_ply = ply + 1; next_ply < pv_length_[ply + 1] && next_ply < MAX_SEARCH_PLY; ++next_ply) {
                     pv_table_[ply][next_ply] = pv_table_[ply + 1][next_ply];
                 }
                 pv_length_[ply] = pv_length_[ply + 1];
@@ -352,17 +409,33 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
 
             if (alpha >= beta) {
                 // Beta cutoff (fail-high): record killer move, countermove, and history heuristic
-                if (!m.is_capture() && ply < 64) {
+                if (quiet && ply < 64) {
                     killer_moves_[ply][1] = killer_moves_[ply][0];
                     killer_moves_[ply][0] = m;
                     Move prev = board.last_move();
                     if (!prev.is_null()) {
                         counter_moves_[prev.from][prev.to] = m;
                     }
-                    int& h = history_[board.side_to_move()][m.from][m.to];
-                    h += depth * depth;
-                    if (h > 30000) {
-                        h /= 2; // Age history to prevent integer saturation
+                    const int bonus = depth * depth;
+                    update_history(history_[board.side_to_move()][m.from][m.to], bonus);
+                    if (!previous_move.is_null()) {
+                        size_t index = continuation_index(previous_move, m);
+                        int continuation = continuation_history_[index];
+                        update_history(continuation, bonus);
+                        continuation_history_[index] = static_cast<int16_t>(continuation);
+                    }
+                    // Penalize earlier quiets that failed to cause a cutoff.
+                    // This is as important as rewarding the refutation: it
+                    // stops stale move-ordering information accumulating.
+                    for (const Move& tried : searched_quiets) {
+                        if (tried == m) continue;
+                        update_history(history_[board.side_to_move()][tried.from][tried.to], -bonus);
+                        if (!previous_move.is_null()) {
+                            size_t index = continuation_index(previous_move, tried);
+                            int continuation = continuation_history_[index];
+                            update_history(continuation, -bonus);
+                            continuation_history_[index] = static_cast<int16_t>(continuation);
+                        }
                     }
                 }
                 tt_.store(board.zobrist_hash(), depth, beta, TT_LOWERBOUND, ply, m);
@@ -381,6 +454,7 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
 /// @brief Orchestrates iterative deepening search, allocates time, and outputs UCI info lines.
 Move Searcher::start_search(Board& board, const SearchLimits& limits) {
     reset();
+    max_nodes_ = limits.max_nodes;
     searching_ = true;
     start_time_ = std::chrono::steady_clock::now();
 
@@ -403,7 +477,7 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
         }
         stop_time_ = start_time_ + std::chrono::milliseconds(alloc_ms_);
     } else {
-        // Unconstrained time: allow up to 1 hour
+        // The current synchronous UCI loop cannot process `stop` while searching.
         stop_time_ = start_time_ + std::chrono::hours(1);
     }
 
@@ -533,9 +607,9 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
             break;
         }
 
-        // Adaptive iteration break: do not start the next depth if more than 55%
-        // of time budget has already elapsed, preventing unfinished depth timeouts.
-        if (alloc_ms_ > 0 && elapsed_ms * 100 > alloc_ms_ * 55) {
+        // For clock management, leave time for the next move. An explicit
+        // `go movetime` is different: use the requested budget instead.
+        if (limits.movetime <= 0 && alloc_ms_ > 0 && elapsed_ms * 100 > alloc_ms_ * 55) {
             break;
         }
     }

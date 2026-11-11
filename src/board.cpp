@@ -561,6 +561,10 @@ int Board::see(const Move& m) const noexcept {
     }
 
     Bitboard occ = all_occ_ ^ square_bb(from);
+    if (m.is_en_passant()) {
+        const Square captured_sq = make_square(square_file(to), square_rank(from));
+        occ ^= square_bb(captured_sq);
+    }
     Bitboard bishops = pieces_[WHITE][BISHOP] | pieces_[BLACK][BISHOP] | pieces_[WHITE][QUEEN] | pieces_[BLACK][QUEEN];
     Bitboard rooks = pieces_[WHITE][ROOK] | pieces_[BLACK][ROOK] | pieces_[WHITE][QUEEN] | pieces_[BLACK][QUEEN];
 

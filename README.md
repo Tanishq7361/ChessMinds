@@ -193,7 +193,21 @@ On Linux / macOS:
 
 ---
 
-## 9. UCI Protocol Reference
+## 9. Offline Human-Game PGN Dataset
+
+The offline PGN pipeline streams one game at a time, checks headers first to skip games below the rating threshold, fully parses eligible games, and writes legal quiet human positions to a gzip-compressed CSV. A JSON sidecar reports accepted/rejected game counts, rejection reasons, results, and rating distribution; it distinguishes header-filtered games from games whose moves were validated. It uses only PGN moves and game results; it does not call the engine or use engine evaluations, books, or tablebases.
+
+```powershell
+python -m pip install -r requirements-pgn.txt
+python tools\process_pgn.py --input data\raw --output data\processed\quiet_positions.csv.gz
+python -m unittest tests.test_process_pgn -v
+```
+
+Quiet positions exclude positions where the side to move is in check and moves that capture or give check. The output CSV stores the pre-move FEN, human move in UCI notation, actual game result, both ratings, source filename, game number, and ply. Processed data is written under `data\processed` and is not tracked by Git.
+
+---
+
+## 10. UCI Protocol Reference
 
 | Command | Response | Description |
 |---|---|---|
@@ -209,6 +223,6 @@ On Linux / macOS:
 
 ---
 
-## 10. License
+## 11. License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

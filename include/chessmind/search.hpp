@@ -4,6 +4,8 @@
 #include "chessmind/tt.hpp"
 #include <chrono>
 #include <atomic>
+#include <cstdint>
+#include <vector>
 
 namespace chessmind {
 
@@ -35,6 +37,7 @@ public:
     void stop();
 
     [[nodiscard]] bool is_searching() const noexcept { return searching_; }
+    [[nodiscard]] uint64_t nodes_searched() const noexcept { return nodes_; }
 
 private:
     /// @brief Main alpha-beta negamax search routine.
@@ -48,6 +51,13 @@ private:
 
     /// @brief Computes sorting priority score for a move.
     [[nodiscard]] int score_move(const Board& board, const Move& m, Move tt_move, int ply) const noexcept;
+
+    /// Update a bounded history entry using the gravity formula.  Unlike a
+    /// simple increment this rewards recent cutoffs while automatically
+    /// decaying stale information.
+    static void update_history(int& entry, int bonus) noexcept;
+
+    [[nodiscard]] size_t continuation_index(const Move& previous, const Move& current) const noexcept;
 
     /// @brief Checks if search has exceeded allocated thinking time.
     void check_time_limit();
@@ -69,11 +79,17 @@ private:
     // History heuristic table: [color][from_sq][to_sq] (accumulates successful quiet moves)
     std::array<std::array<std::array<int, 64>, 64>, 2> history_{};
 
+    // Reply-specific quiet-move history.  This records which move tends to
+    // refute a particular preceding move; kept on the heap so Searcher stays
+    // safe to create on ordinary thread stacks.
+    std::vector<int16_t> continuation_history_;
+
     // Triangular PV (Principal Variation) table [ply][ply]
     std::array<std::array<Move, 64>, 64> pv_table_{};
     std::array<int, 64> pv_length_{};
 
     int alloc_ms_ = 0;
+    uint64_t max_nodes_ = 0;
 };
 
 } // namespace chessmind
