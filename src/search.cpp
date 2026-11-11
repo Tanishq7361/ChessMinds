@@ -78,6 +78,13 @@ void Searcher::check_time_limit() {
 int Searcher::score_move(const Board& board, const Move& m, Move tt_move, int ply) const noexcept {
     if (m == tt_move) return 1'000'000;
 
+    // FIX 1: Quiet promotions (non-capturing) now receive a high priority score
+    // just below good captures. Under-promotions sorted by promoted piece value.
+    // This ensures e.g. a7a8q is searched before quiet king moves in endgames.
+    if (m.is_promotion() && !m.is_capture()) {
+        return 95'000 + MVV_LVA_VALUES[m.promo];
+    }
+
     if (m.is_capture()) {
         Piece victim = board.piece_at(m.to);
         PieceType victim_pt = (victim != EMPTY) ? type_of(victim) : PAWN;
@@ -285,24 +292,37 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
     int static_eval = Evaluator::evaluate(board);
 
     // Reverse Futility Pruning (RFP / Static Null Move Pruning):
-    // At shallow depths, if static evaluation is well above beta, prune early without searching moves.
+    // FIX 4: Increased margin from 75*depth to 120*depth.
+    // The 75 cp margin was too tight — in inflated-eval positions (e.g. 1300 cp),
+    // RFP triggered at depth 1 on static_eval advantages of only 75 cp, pruning
+    // entire subtrees before tactical replies (hanging pieces, pins, checks) could
+    // be explored. 120*depth gives tactical complications the room to surface.
     if (!in_check && ply > 0 && depth <= 3 && std::abs(beta) < Evaluator::MATE_SCORE) {
-        int rfp_margin = 75 * depth;
+        int rfp_margin = 120 * depth;
         if (static_eval - rfp_margin >= beta) {
             return beta;
         }
     }
 
     // Null-Move Pruning (NMP):
-    // If not in check, null move allowed, depth >= 3, and side to move has pieces other than pawns
-    if (is_null_allowed && !in_check && ply > 0 && depth >= 3 && board.has_non_pawn_material(board.side_to_move())) {
+    // FIX 3: Added two critical preconditions:
+    // (a) static_eval >= beta: only attempt NMP when we're already above beta;
+    //     without this guard the null move can produce fail-highs in losing/equal
+    //     positions (zugzwang-like situations and tactical crises).
+    // (b) Suppress cutoff when null search returns a mate claim, as null-move
+    //     mates are notoriously unreliable (opponent may avoid the mating lines).
+    if (is_null_allowed && !in_check && ply > 0 && depth >= 3 &&
+        board.has_non_pawn_material(board.side_to_move()) &&
+        static_eval >= beta) {
         int R = 2 + (depth > 6 ? 1 : 0);
         board.make_null_move();
         int null_score = -negamax(board, depth - 1 - R, ply + 1, -beta, -beta + 1, false);
         board.undo_null_move();
 
         if (stop_flag_) return 0;
-        if (null_score >= beta) {
+        // FIX 3b: Don't trust null-search mate claims — they can arise from
+        // horizon effects in the reduced subtree and cause unsound prune-outs.
+        if (null_score >= beta && null_score < Evaluator::MATE_SCORE - 1000) {
             return beta; // Fail-high cutoff without exploring full subtree
         }
     }
@@ -329,21 +349,44 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
     searched_quiets.reserve(legal_moves.size());
 
     for (const auto& m : legal_moves) {
-        // Late Move Pruning (LMP): near leaf nodes, prune quiet moves after searching the most promising candidates
-        if (depth <= 3 && !in_check && !m.is_capture() && !m.is_promotion()) {
-            if (moves_searched >= (4 + 4 * depth)) {
-                continue;
-            }
-        }
-
-        // Futility Pruning (FP): Skip quiet moves with no prospect of exceeding alpha near leaf nodes
-        if (moves_searched > 0 && depth <= 2 && !in_check && !m.is_capture() && !m.is_promotion()) {
-            if (static_eval + 120 * depth <= alpha) {
-                continue;
-            }
-        }
-
         const bool quiet = !m.is_capture() && !m.is_promotion();
+
+        // FIX 2: Tactical safety checks for LMP and Futility Pruning.
+        // We must detect whether this move gives check AFTER making it.
+        // Check status is probed lazily (only when pruning conditions are otherwise met).
+
+        // Late Move Pruning (LMP): near leaf nodes, prune quiet moves after searching the most promising candidates.
+        // Never prune if the move is a killer (already tested in score_move) — we guard by checking killer tables.
+        if (depth <= 3 && !in_check && quiet) {
+            if (moves_searched >= (4 + 4 * depth)) {
+                // Safety: never LMP-prune killer moves
+                bool is_killer = (ply < 64 &&
+                    (m == killer_moves_[ply][0] || m == killer_moves_[ply][1]));
+                if (!is_killer) {
+                    // Probe if this quiet move delivers check by making/unmaking it
+                    board.make_move(m);
+                    bool gives_check = board.in_check();
+                    board.undo_move();
+                    if (!gives_check) continue;
+                }
+            }
+        }
+
+        // Futility Pruning (FP): Skip quiet moves with no prospect of exceeding alpha near leaf nodes.
+        // FIX 2 continued: Never prune moves that give check or are killers.
+        if (moves_searched > 0 && depth <= 2 && !in_check && quiet) {
+            if (static_eval + 120 * depth <= alpha) {
+                bool is_killer = (ply < 64 &&
+                    (m == killer_moves_[ply][0] || m == killer_moves_[ply][1]));
+                if (!is_killer) {
+                    board.make_move(m);
+                    bool gives_check = board.in_check();
+                    board.undo_move();
+                    if (!gives_check) continue;
+                }
+            }
+        }
+
         const Move previous_move = board.last_move();
         const int quiet_history = quiet ? history_[board.side_to_move()][m.from][m.to] : 0;
         board.make_move(m);
@@ -438,8 +481,12 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
                         }
                     }
                 }
-                tt_.store(board.zobrist_hash(), depth, beta, TT_LOWERBOUND, ply, m);
-                return beta;
+                // FIX 5: Store best_score (not beta) in the TT on a fail-high cutoff.
+                // Previously storing beta truncated exact mate distances and caused
+                // iterative deepening to re-use stale lower-bound values. Storing
+                // best_score preserves the actual search result including mate scores.
+                tt_.store(board.zobrist_hash(), depth, best_score, TT_LOWERBOUND, ply, m);
+                return best_score;
             }
         }
     }
@@ -467,11 +514,21 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
         int time_left = (board.side_to_move() == WHITE) ? limits.wtime : limits.btime;
         int inc = (board.side_to_move() == WHITE) ? limits.winc : limits.binc;
         if (time_left > 0) {
-            // Allocate 1/25th of remaining time plus 75% of increment
-            alloc_ms_ = time_left / 25 + (inc * 3) / 4;
-            if (alloc_ms_ > time_left - 30) {
-                alloc_ms_ = std::max(5, time_left - 30);
+            // TIME PRESSURE TIERS (Fix: respond quickly when clock is critically low):
+            //  < 10 000 ms : budget max 500 ms  (nearly immediate)
+            //  < 20 000 ms : budget max 1 000 ms
+            //  < 30 000 ms : budget max 2 000 ms
+            //  otherwise   : 1/25th of remaining + 75 % of increment (original formula)
+            if (time_left < 10'000) {
+                alloc_ms_ = std::min(500, time_left - 50);
+            } else if (time_left < 20'000) {
+                alloc_ms_ = std::min(1'000, time_left - 100);
+            } else if (time_left < 30'000) {
+                alloc_ms_ = std::min(2'000, time_left - 150);
+            } else {
+                alloc_ms_ = time_left / 25 + (inc * 3) / 4;
             }
+            alloc_ms_ = std::max(5, std::min(alloc_ms_, time_left - 30));
         } else {
             alloc_ms_ = 50;
         }

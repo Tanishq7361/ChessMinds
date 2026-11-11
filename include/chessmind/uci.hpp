@@ -24,6 +24,7 @@ public:
     void handle_perft(int depth);
     void handle_legalmoves();
     void handle_game_status();
+    void handle_clock(const std::string& line); // Clock preset info handler
 
 private:
 

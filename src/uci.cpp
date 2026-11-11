@@ -112,6 +112,72 @@ void Uci::handle_go(const std::string& line) {
     std::cout << "bestmove " << best_move.to_uci() << "\n" << std::flush;
 }
 
+/// @brief Handles 'clock <preset>': sets up predefined time controls.
+/// Presets: "3+2" (3-min + 2s inc), "1min", "10min", "rapid" (15+10), custom "Xmin+Ys"
+void Uci::handle_clock(const std::string& line) {
+    std::istringstream iss(line);
+    std::string token;
+    iss >> token; // consume "clock"
+
+    std::string preset;
+    if (!(iss >> preset)) {
+        std::cout << "info string Available clock presets: 3+2  1min  10min  rapid  bullet  blitz\n" << std::flush;
+        return;
+    }
+
+    // Apply the preset as a movetime for the next go command by outputting a helpful info line
+    // The GUI/web layer should use these values as wtime/btime/winc/binc in subsequent 'go' commands
+    if (preset == "3+2") {
+        std::cout << "info string Clock preset: 3 min + 2 s increment. "
+                     "Use: go wtime 180000 btime 180000 winc 2000 binc 2000\n";
+    } else if (preset == "1min" || preset == "1+0") {
+        std::cout << "info string Clock preset: 1 min no increment. "
+                     "Use: go wtime 60000 btime 60000 winc 0 binc 0\n";
+    } else if (preset == "10min" || preset == "10+0") {
+        std::cout << "info string Clock preset: 10 min no increment. "
+                     "Use: go wtime 600000 btime 600000 winc 0 binc 0\n";
+    } else if (preset == "rapid" || preset == "15+10") {
+        std::cout << "info string Clock preset: 15 min + 10 s increment. "
+                     "Use: go wtime 900000 btime 900000 winc 10000 binc 10000\n";
+    } else if (preset == "bullet" || preset == "1+1") {
+        std::cout << "info string Clock preset: 1 min + 1 s increment. "
+                     "Use: go wtime 60000 btime 60000 winc 1000 binc 1000\n";
+    } else if (preset == "blitz" || preset == "5+0") {
+        std::cout << "info string Clock preset: 5 min no increment. "
+                     "Use: go wtime 300000 btime 300000 winc 0 binc 0\n";
+    } else {
+        // Try parsing "Xmin+Ys" or "Xmin" custom format
+        int base_ms = 0;
+        int inc_ms  = 0;
+        // Simple parser: look for a number before "min"
+        size_t min_pos = preset.find("min");
+        if (min_pos != std::string::npos) {
+            try {
+                base_ms = std::stoi(preset.substr(0, min_pos)) * 60'000;
+            } catch (...) {}
+            size_t plus_pos = preset.find('+', min_pos);
+            if (plus_pos != std::string::npos) {
+                size_t s_pos = preset.find('s', plus_pos);
+                if (s_pos != std::string::npos) {
+                    try {
+                        inc_ms = std::stoi(preset.substr(plus_pos + 1, s_pos - plus_pos - 1)) * 1000;
+                    } catch (...) {}
+                }
+            }
+        }
+        if (base_ms > 0) {
+            std::cout << "info string Clock preset: custom " << (base_ms / 60000) << " min"
+                      << (inc_ms > 0 ? " + " + std::to_string(inc_ms / 1000) + " s increment" : "") << ". "
+                      << "Use: go wtime " << base_ms << " btime " << base_ms
+                      << " winc " << inc_ms << " binc " << inc_ms << "\n";
+        } else {
+            std::cout << "info string Unknown preset '" << preset
+                      << "'. Available: 3+2  1min  10min  rapid  bullet  blitz  Xmin+Ys\n";
+        }
+    }
+    std::cout << std::flush;
+}
+
 /// @brief Runs standard benchmark positions at fixed depth and reports overall performance.
 void Uci::handle_bench(int depth) {
     constexpr const char* BENCH_FENS[] = {
@@ -245,6 +311,9 @@ void Uci::loop() {
             iss >> depth;
             if (depth <= 0) depth = 6;
             handle_bench(depth);
+        } else if (command == "clock") {
+            // Clock preset info: "clock 3+2", "clock 1min", "clock 10min", etc.
+            handle_clock(line);
         } else if (command == "stop") {
             searcher_.stop();
         } else if (command == "quit") {
