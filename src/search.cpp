@@ -154,6 +154,10 @@ int Searcher::quiescence(Board& board, int alpha, int beta, int ply) {
     }
     if (stop_flag_) return 0;
 
+    if (ply > seldepth_) {
+        seldepth_ = ply;
+    }
+
     if (ply >= MAX_SEARCH_PLY - 1) {
         const bool at_max_ply_in_check = board.in_check();
         std::vector<Move> legal_moves;
@@ -235,6 +239,10 @@ int Searcher::quiescence(Board& board, int alpha, int beta, int ply) {
 
 /// @brief Recursive Negamax algorithm with Alpha-Beta pruning, Null-Move Pruning, and LMR.
 int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, bool is_null_allowed) {
+    if (ply > seldepth_) {
+        seldepth_ = ply;
+    }
+
     if (ply >= MAX_SEARCH_PLY - 1) {
         return quiescence(board, alpha, beta, ply);
     }
@@ -555,6 +563,7 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
 
     // 2. Iterative Deepening loop (depth 1, 2, 3...)
     for (int current_depth = 1; current_depth <= max_depth; ++current_depth) {
+        seldepth_ = current_depth;
         Move iteration_best_move = NULL_MOVE;
         order_moves(board, root_moves, best_overall_move, 0);
 
@@ -647,8 +656,17 @@ Move Searcher::start_search(Board& board, const SearchLimits& limits) {
 
         // Output UCI search status line with full PV
         std::cout << "info depth " << current_depth
-                  << " score cp " << best_score
-                  << " time " << elapsed_ms
+                  << " seldepth " << seldepth_;
+        if (best_score >= Evaluator::MATE_SCORE - 500) {
+            int mate_moves = (Evaluator::MATE_SCORE - best_score + 1) / 2;
+            std::cout << " score mate " << mate_moves;
+        } else if (best_score <= -Evaluator::MATE_SCORE + 500) {
+            int mate_moves = (-Evaluator::MATE_SCORE - best_score - 1) / 2;
+            std::cout << " score mate " << mate_moves;
+        } else {
+            std::cout << " score cp " << best_score;
+        }
+        std::cout << " time " << elapsed_ms
                   << " nodes " << nodes_
                   << " nps " << nps
                   << " pv " << best_overall_pv

@@ -36,6 +36,7 @@ data/
 
 # Benchmark generated reports
 benchmark_results.csv
+benchmark_summary.csv
 benchmark_summary.json
 reports/
 

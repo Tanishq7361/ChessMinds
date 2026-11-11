@@ -90,6 +90,7 @@ private:
 
     int alloc_ms_ = 0;
     uint64_t max_nodes_ = 0;
+    int seldepth_ = 0;
 };
 
 } // namespace chessmind

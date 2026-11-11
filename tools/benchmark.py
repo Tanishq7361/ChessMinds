@@ -60,6 +60,32 @@ DEFAULT_BENCHMARK_POSITIONS: List[Tuple[str, str]] = [
 ]
 
 
+def format_score(score_type: Optional[str], score: Optional[int]) -> str:
+    """Formats centipawns or mate scores into standard readable notation (+1.25, -0.40, M2, -M3)."""
+    if score is None:
+        return "-"
+    if score_type == "mate":
+        return f"M{score}" if score > 0 else f"-M{abs(score)}"
+    if score >= 28000:
+        moves = (30000 - score + 1) // 2
+        return f"M{moves}"
+    elif score <= -28000:
+        moves = (-30000 - score) // 2
+        return f"-M{abs(moves)}"
+    pawn_val = score / 100.0
+    return f"{pawn_val:+.2f}"
+
+
+def format_pv(pv: Optional[str], max_moves: int = 4) -> str:
+    """Returns a concise PV snippet (first N moves) for display and CSV output."""
+    if not pv or not pv.strip():
+        return "-"
+    tokens = pv.strip().split()
+    if len(tokens) <= max_moves:
+        return " ".join(tokens)
+    return " ".join(tokens[:max_moves]) + " ..."
+
+
 def find_default_engine() -> Optional[str]:
     """Auto-detects the compiled ChessMinds executable in standard build directories."""
     repo_root = Path(__file__).resolve().parent.parent
@@ -443,14 +469,14 @@ class BenchmarkFramework:
         total_runs = len(positions) * self.rounds
         current_run = 0
 
-        header_fmt = "{:<4} {:<6} {:<24} {:<7} {:<10} {:<11} {:<8} {:<9} {:<8}"
-        print(header_fmt.format("Idx", "Round", "Position Name", "Depth", "Nodes", "NPS", "Time", "BestMove", "Score"))
-        print("-" * 92)
+        header_fmt = "{:<5} {:<7} {:<32} {:<8} {:<8} {:<9} {:<11} {:<12} {:<9}"
+        print(header_fmt.format("Idx", "Round", "Position Name", "Depth", "Score", "BestMove", "Nodes", "NPS", "Time"))
+        print("-" * 105)
 
         start_wall_time = time.time()
 
         for pos_idx, (fen, name) in enumerate(positions, start=1):
-            short_name = name[:23] if len(name) > 23 else name
+            short_name = name[:31] if len(name) > 31 else name
 
             for rnd in range(1, self.rounds + 1):
                 current_run += 1
@@ -461,17 +487,18 @@ class BenchmarkFramework:
                     timeout_sec=self.timeout_sec,
                 )
 
-                score_str = f"{res['score_type']} {res['score']}" if res['status'] == "OK" else res['status']
-                row_str = "{:<4} {:<6} {:<24} {:<7} {:<10} {:<11} {:<8} {:<9} {:<8}".format(
+                score_str = format_score(res.get("score_type"), res.get("score")) if res['status'] == "OK" else res['status']
+                depth_str = f"{res['depth']}/{res['seldepth']}" if res.get('seldepth') else str(res.get('depth', 0))
+                row_str = header_fmt.format(
                     f"[{pos_idx}]",
                     f"{rnd}/{self.rounds}",
                     short_name,
-                    res["depth"],
+                    depth_str,
+                    score_str,
+                    res["bestmove"] or "-",
                     f"{res['nodes']:,}",
                     f"{res['nps']:,}",
                     f"{res['time_ms']} ms",
-                    res["bestmove"] or "-",
-                    score_str,
                 )
                 print(row_str)
 
@@ -631,36 +658,146 @@ class BenchmarkFramework:
         print("=" * 78 + "\n")
 
 
-def save_csv(results: List[Dict[str, Any]], filepath: str) -> None:
-    """Exports raw measurement data to CSV."""
+def save_csv(results: List[Dict[str, Any]], filepath: str, include_fen: bool = False) -> None:
+    """Exports raw measurement data to a clean, highly human-readable CSV."""
     path = Path(filepath)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     headers = [
-        "position_index",
-        "position_name",
-        "fen",
-        "round",
-        "status",
-        "depth",
-        "seldepth",
-        "score_type",
-        "score",
-        "nodes",
-        "nps",
-        "time_ms",
-        "bestmove",
-        "pv",
-        "error_msg",
+        "Position_Index",
+        "Position_Name",
+        "Round",
+        "Status",
+        "Depth",
+        "Seldepth",
+        "Score",
+        "Best_Move",
+        "Nodes",
+        "NPS",
+        "Time_ms",
+        "Time_s",
+        "PV_Preview",
     ]
+    if include_fen:
+        headers.append("FEN")
+    headers.append("Error")
 
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=headers)
         writer.writeheader()
-        for row in results:
+        for r in results:
+            score_display = format_score(r.get("score_type"), r.get("score"))
+            time_ms = r.get("time_ms", 0)
+            row = {
+                "Position_Index": r.get("position_index", 0),
+                "Position_Name": r.get("position_name", ""),
+                "Round": r.get("round", 1),
+                "Status": r.get("status", "OK"),
+                "Depth": r.get("depth", 0),
+                "Seldepth": r.get("seldepth", 0),
+                "Score": score_display,
+                "Best_Move": r.get("bestmove") or "-",
+                "Nodes": r.get("nodes", 0),
+                "NPS": r.get("nps", 0),
+                "Time_ms": time_ms,
+                "Time_s": round(time_ms / 1000.0, 3),
+                "PV_Preview": format_pv(r.get("pv", ""), max_moves=5),
+                "Error": r.get("error_msg") or "",
+            }
+            if include_fen:
+                row["FEN"] = r.get("fen", "")
             writer.writerow(row)
 
     print(f"[Export] Saved individual benchmark results to CSV: {os.path.abspath(path)}")
+
+
+def save_summary_csv(results: List[Dict[str, Any]], summary: Dict[str, Any], filepath: str) -> None:
+    """Exports an aggregated per-position summary CSV with clean metrics and totals."""
+    path = Path(filepath)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    headers = [
+        "Position_Index",
+        "Position_Name",
+        "Status",
+        "Best_Move",
+        "Score",
+        "Max_Depth",
+        "Max_Seldepth",
+        "Avg_Nodes",
+        "Avg_NPS",
+        "Avg_Time_ms",
+        "Avg_Time_s",
+        "Rounds",
+    ]
+
+    positions_map: Dict[int, List[Dict[str, Any]]] = {}
+    for r in results:
+        idx = r.get("position_index", 0)
+        if idx not in positions_map:
+            positions_map[idx] = []
+        positions_map[idx].append(r)
+
+    rows = []
+    for idx in sorted(positions_map.keys()):
+        group = positions_map[idx]
+        name = group[0].get("position_name", f"Position {idx}")
+        valid = [r for r in group if r.get("status") == "OK"]
+        if valid:
+            last_valid = valid[-1]
+            status = "OK"
+            best_move = last_valid.get("bestmove") or "-"
+            score = format_score(last_valid.get("score_type"), last_valid.get("score"))
+            depth = max(r.get("depth", 0) for r in valid)
+            seldepth = max(r.get("seldepth", 0) for r in valid)
+            avg_nodes = int(statistics.mean(r.get("nodes", 0) for r in valid))
+            avg_nps = int(statistics.mean(r.get("nps", 0) for r in valid))
+            avg_time_ms = round(statistics.mean(r.get("time_ms", 0) for r in valid), 1)
+        else:
+            status = group[-1].get("status", "FAIL")
+            best_move = "-"
+            score = "-"
+            depth = 0
+            seldepth = 0
+            avg_nodes = 0
+            avg_nps = 0
+            avg_time_ms = 0.0
+
+        rows.append({
+            "Position_Index": idx,
+            "Position_Name": name,
+            "Status": status,
+            "Best_Move": best_move,
+            "Score": score,
+            "Max_Depth": depth,
+            "Max_Seldepth": seldepth,
+            "Avg_Nodes": avg_nodes,
+            "Avg_NPS": avg_nps,
+            "Avg_Time_ms": avg_time_ms,
+            "Avg_Time_s": round(avg_time_ms / 1000.0, 3),
+            "Rounds": len(group),
+        })
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=headers)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(r)
+
+        sm = summary.get("summary_metrics", {})
+        if sm:
+            f.write("\n")
+            f.write("# OVERALL BENCHMARK SUMMARY\n")
+            f.write(f"# Total Positions,{summary.get('configuration', {}).get('total_positions', len(rows))}\n")
+            f.write(f"# Average NPS,{sm.get('average_nps', 0)}\n")
+            f.write(f"# Median NPS,{sm.get('median_nps', 0)}\n")
+            f.write(f"# Weighted NPS,{sm.get('weighted_nps', 0)}\n")
+            f.write(f"# Total Nodes Searched,{sm.get('total_nodes_searched', 0)}\n")
+            f.write(f"# Average Nodes Per Position,{sm.get('average_nodes_per_pos', 0)}\n")
+            f.write(f"# Average Search Time ms,{sm.get('average_search_time_ms', 0.0)}\n")
+            f.write(f"# Total Wall Time s,{sm.get('total_wall_time_sec', 0.0)}\n")
+
+    print(f"[Export] Saved aggregated summary table to CSV:     {os.path.abspath(path)}")
 
 
 def save_json(summary: Dict[str, Any], filepath: str) -> None:
@@ -737,7 +874,18 @@ PowerShell Usage Examples:
         "--csv",
         type=str,
         default="benchmark_results.csv",
-        help="Output file path for raw CSV records (default: benchmark_results.csv).",
+        help="Output file path for clean individual measurement CSV (default: benchmark_results.csv).",
+    )
+    parser.add_argument(
+        "--summary-csv",
+        type=str,
+        default="benchmark_summary.csv",
+        help="Output file path for aggregated per-position summary CSV (default: benchmark_summary.csv).",
+    )
+    parser.add_argument(
+        "--include-fen",
+        action="store_true",
+        help="Include full raw FEN strings in the CSV output (appended as final column).",
     )
     parser.add_argument(
         "--json",
@@ -801,7 +949,9 @@ def main() -> int:
 
     # 5. Export results
     if args.csv:
-        save_csv(raw_results, args.csv)
+        save_csv(raw_results, args.csv, include_fen=args.include_fen)
+    if args.summary_csv:
+        save_summary_csv(raw_results, summary, args.summary_csv)
     if args.json:
         save_json(summary, args.json)
 
