@@ -4,6 +4,8 @@
 #include "chessmind/tt.hpp"
 #include "chessmind/search.hpp"
 #include <string>
+#include <thread>
+#include <atomic>
 
 namespace chessmind {
 
@@ -11,6 +13,7 @@ namespace chessmind {
 class Uci {
 public:
     Uci();
+    ~Uci();
 
     /// @brief Main input reading loop parsing standard UCI commands from stdin until "quit".
     void loop();
@@ -26,11 +29,17 @@ public:
     void handle_game_status();
     void handle_clock(const std::string& line); // Clock preset info handler
 
-private:
+    /// @brief Stops any active search and joins the background worker thread.
+    void stop_search();
 
+    /// @brief Waits for any active search worker thread to complete.
+    void wait_search();
+
+private:
     Board board_;
     TranspositionTable tt_;
     Searcher searcher_;
+    std::thread search_thread_;
 };
 
 } // namespace chessmind

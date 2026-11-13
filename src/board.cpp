@@ -377,7 +377,67 @@ void Board::make_move(const Move& m) {
     }
     side_to_move_ = them;
 
-    zobrist_hash_ = compute_zobrist();
+    // Incremental Zobrist update
+    uint64_t hash = state.zobrist_hash;
+    // 1. Moving piece from m.from
+    hash ^= zobrist::PIECE_KEYS[us][pt][m.from];
+
+    // 2. Captured piece
+    if (state.captured != EMPTY) {
+        if (m.is_en_passant()) {
+            Square cap_sq = make_square(square_file(m.to), square_rank(m.from));
+            hash ^= zobrist::PIECE_KEYS[them][PAWN][cap_sq];
+        } else {
+            hash ^= zobrist::PIECE_KEYS[them][type_of(state.captured)][m.to];
+        }
+    }
+
+    // 3. Castling rook move
+    if (m.is_castling()) {
+        if (m.to == SQ_G1) {
+            hash ^= zobrist::PIECE_KEYS[WHITE][ROOK][SQ_H1];
+            hash ^= zobrist::PIECE_KEYS[WHITE][ROOK][SQ_F1];
+        } else if (m.to == SQ_C1) {
+            hash ^= zobrist::PIECE_KEYS[WHITE][ROOK][SQ_A1];
+            hash ^= zobrist::PIECE_KEYS[WHITE][ROOK][SQ_D1];
+        } else if (m.to == SQ_G8) {
+            hash ^= zobrist::PIECE_KEYS[BLACK][ROOK][SQ_H8];
+            hash ^= zobrist::PIECE_KEYS[BLACK][ROOK][SQ_F8];
+        } else if (m.to == SQ_C8) {
+            hash ^= zobrist::PIECE_KEYS[BLACK][ROOK][SQ_A8];
+            hash ^= zobrist::PIECE_KEYS[BLACK][ROOK][SQ_D8];
+        }
+    }
+
+    // 4. Moving piece placed at m.to (or promotion piece)
+    if (m.is_promotion()) {
+        PieceType pr = m.promo;
+        if (pr != QUEEN && pr != ROOK && pr != BISHOP && pr != KNIGHT) {
+            pr = QUEEN;
+        }
+        hash ^= zobrist::PIECE_KEYS[us][pr][m.to];
+    } else {
+        hash ^= zobrist::PIECE_KEYS[us][pt][m.to];
+    }
+
+    // 5. Castling rights update
+    if (castling_rights_ != state.castling_rights) {
+        hash ^= zobrist::CASTLE_KEYS[state.castling_rights & 0xF];
+        hash ^= zobrist::CASTLE_KEYS[castling_rights_ & 0xF];
+    }
+
+    // 6. En passant square update
+    if (state.ep_square != SQ_NONE) {
+        hash ^= zobrist::EP_KEYS[state.ep_square];
+    }
+    if (ep_square_ != SQ_NONE) {
+        hash ^= zobrist::EP_KEYS[ep_square_];
+    }
+
+    // 7. Side to move
+    hash ^= zobrist::SIDE_KEY;
+
+    zobrist_hash_ = hash;
     history_.push_back(state);
     repetition_history_.push_back(zobrist_hash_);
 }
@@ -458,7 +518,13 @@ void Board::make_null_move() {
     }
     side_to_move_ = ~side_to_move_;
 
-    zobrist_hash_ = compute_zobrist();
+    uint64_t hash = state.zobrist_hash;
+    if (state.ep_square != SQ_NONE) {
+        hash ^= zobrist::EP_KEYS[state.ep_square];
+    }
+    hash ^= zobrist::SIDE_KEY;
+    zobrist_hash_ = hash;
+
     history_.push_back(state);
     repetition_history_.push_back(zobrist_hash_);
 }

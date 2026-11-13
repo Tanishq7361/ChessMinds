@@ -509,6 +509,7 @@ int Searcher::negamax(Board& board, int depth, int ply, int alpha, int beta, boo
 /// @brief Orchestrates iterative deepening search, allocates time, and outputs UCI info lines.
 Move Searcher::start_search(Board& board, const SearchLimits& limits) {
     reset();
+    tt_.advance_generation();
     max_nodes_ = limits.max_nodes;
     searching_ = true;
     start_time_ = std::chrono::steady_clock::now();

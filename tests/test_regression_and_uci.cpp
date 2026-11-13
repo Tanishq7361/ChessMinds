@@ -150,6 +150,7 @@ void test_uci_integration() {
 
     // 5. handle_go depth
     uci.handle_go("go depth 2");
+    uci.wait_search();
     std::string go_out = buffer.str();
     assert(go_out.find("bestmove") != std::string::npos);
     buffer.str("");

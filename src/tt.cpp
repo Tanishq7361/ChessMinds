@@ -87,7 +87,7 @@ Move TranspositionTable::probe_move(uint64_t key) const noexcept {
     return NULL_MOVE;
 }
 
-/// @brief Stores or updates entry in 2-way cluster: slot 0 is depth-preferred, slot 1 is always-replace.
+/// @brief Stores or updates entry in 2-way cluster: slot 0 is depth/age-preferred, slot 1 is always-replace.
 void TranspositionTable::store(uint64_t key, int depth, int score, uint8_t flag, int ply, Move best_move) noexcept {
     if (clusters_count_ == 0) return;
     TTCluster& cluster = table_[key & mask_];
@@ -95,10 +95,11 @@ void TranspositionTable::store(uint64_t key, int depth, int score, uint8_t flag,
     // 1. If key already exists in the cluster, update that slot
     for (int i = 0; i < 2; ++i) {
         if (cluster.entries[i].key == key) {
-            if (depth >= cluster.entries[i].depth || flag == TT_EXACT) {
+            if (depth >= cluster.entries[i].depth || flag == TT_EXACT || cluster.entries[i].age != generation_) {
                 cluster.entries[i].depth = static_cast<int8_t>(depth);
                 cluster.entries[i].score = static_cast<int16_t>(score_to_tt(score, ply));
                 cluster.entries[i].flag = flag;
+                cluster.entries[i].age = generation_;
             }
             if (!best_move.is_null()) {
                 cluster.entries[i].best_move = best_move;
@@ -107,9 +108,11 @@ void TranspositionTable::store(uint64_t key, int depth, int score, uint8_t flag,
         }
     }
 
-    // 2. Key is new: slot 0 is depth-preferred, slot 1 is always-replace
+    // 2. Key is new: slot 0 is depth/generation-preferred, slot 1 is always-replace
     int target_idx = 1;
-    if (cluster.entries[0].key == 0 || depth >= cluster.entries[0].depth) {
+    if (cluster.entries[0].key == 0 || 
+        cluster.entries[0].age != generation_ || 
+        depth >= cluster.entries[0].depth) {
         target_idx = 0;
     }
 
@@ -118,6 +121,7 @@ void TranspositionTable::store(uint64_t key, int depth, int score, uint8_t flag,
     entry.depth = static_cast<int8_t>(depth);
     entry.score = static_cast<int16_t>(score_to_tt(score, ply));
     entry.flag = flag;
+    entry.age = generation_;
     if (!best_move.is_null()) {
         entry.best_move = best_move;
     }

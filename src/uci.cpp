@@ -10,6 +10,23 @@ Uci::Uci() : tt_(16), searcher_(tt_) {
     board_.reset();
 }
 
+Uci::~Uci() {
+    stop_search();
+}
+
+void Uci::stop_search() {
+    searcher_.stop();
+    if (search_thread_.joinable()) {
+        search_thread_.join();
+    }
+}
+
+void Uci::wait_search() {
+    if (search_thread_.joinable()) {
+        search_thread_.join();
+    }
+}
+
 /// @brief Handles the 'uci' command: identifies engine and responds with 'uciok'.
 void Uci::handle_uci() {
     std::cout << "id name ChessMinds\n"
@@ -24,6 +41,7 @@ void Uci::handle_isready() {
 
 /// @brief Handles 'ucinewgame': resets board, history, and clears the transposition table.
 void Uci::handle_ucinewgame() {
+    stop_search();
     tt_.clear();
     searcher_.reset();
     board_.reset();
@@ -31,6 +49,7 @@ void Uci::handle_ucinewgame() {
 
 /// @brief Handles the 'position' command: parses 'startpos' or 'fen', followed by optional move list.
 void Uci::handle_position(const std::string& line) {
+    stop_search();
     std::istringstream iss(line);
     std::string token;
     iss >> token; // consume "position"
@@ -67,6 +86,8 @@ void Uci::handle_position(const std::string& line) {
 
 /// @brief Handles the 'go' command: parses search bounds (time, increment, depth) and outputs 'bestmove'.
 void Uci::handle_go(const std::string& line) {
+    stop_search();
+
     std::istringstream iss(line);
     std::string token;
     iss >> token; // consume "go"
@@ -108,8 +129,11 @@ void Uci::handle_go(const std::string& line) {
         }
     }
 
-    Move best_move = searcher_.start_search(board_, limits);
-    std::cout << "bestmove " << best_move.to_uci() << "\n" << std::flush;
+    // Launch search asynchronously on dedicated worker thread so stdin remains responsive to 'stop'
+    search_thread_ = std::thread([this, limits]() {
+        Move best_move = searcher_.start_search(board_, limits);
+        std::cout << "bestmove " << best_move.to_uci() << "\n" << std::flush;
+    });
 }
 
 /// @brief Handles 'clock <preset>': sets up predefined time controls.
@@ -180,6 +204,7 @@ void Uci::handle_clock(const std::string& line) {
 
 /// @brief Runs standard benchmark positions at fixed depth and reports overall performance.
 void Uci::handle_bench(int depth) {
+    stop_search();
     constexpr const char* BENCH_FENS[] = {
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
         "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
@@ -227,6 +252,7 @@ static uint64_t run_perft_divide(Board& b, int depth) {
 
 /// @brief Runs a perft divide on the current board position and prints per-move leaf counts.
 void Uci::handle_perft(int depth) {
+    stop_search();
     std::vector<Move> moves;
     MoveGen::generate_legal_moves(board_, moves);
     uint64_t total_nodes = 0;
@@ -248,6 +274,7 @@ void Uci::handle_perft(int depth) {
 
 /// @brief Outputs all currently legal moves for UI hint dots and frontend validation.
 void Uci::handle_legalmoves() {
+    stop_search();
     std::vector<Move> moves;
     MoveGen::generate_legal_moves(board_, moves);
     std::cout << "legalmoves";
@@ -259,6 +286,7 @@ void Uci::handle_legalmoves() {
 
 /// @brief Reports a terminal game state for the current position and move history.
 void Uci::handle_game_status() {
+    stop_search();
     std::vector<Move> legal_moves;
     MoveGen::generate_legal_moves(board_, legal_moves);
 
@@ -315,8 +343,9 @@ void Uci::loop() {
             // Clock preset info: "clock 3+2", "clock 1min", "clock 10min", etc.
             handle_clock(line);
         } else if (command == "stop") {
-            searcher_.stop();
+            stop_search();
         } else if (command == "quit") {
+            stop_search();
             break;
         }
     }
