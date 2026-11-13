@@ -331,28 +331,57 @@ Where result is from White's perspective: `1.0` (White win), `0.5` (Draw), `0.0`
 
 ### Pipeline Commands (PowerShell & Batch)
 
+#### Sequential Batch Queue Workflow (Recommended for Large Datasets)
 ```powershell
-# 1. Inspect dataset statistics (counts, win/draw/loss distribution, size)
+# 1. View current queue status, pending positions, and disk usage
+.\train_pipeline.ps1 -Action status
+# or CMD/Batch:
+train_pipeline.bat status
+
+# 2. Incrementally extract raw PGN files into pending queue & validation set
+.\train_pipeline.ps1 -Action extract -InputPgn "data/raw" -MinElo 2000
+# or CMD/Batch:
+train_pipeline.bat extract data\raw
+
+# 3. Train sequentially in batches of 100,000 positions with parameter continuity
+.\train_pipeline.ps1 -Action train-batches -BatchSize 100000 -Iterations 3
+# or CMD/Batch:
+train_pipeline.bat train-batches 100000 3
+
+# 4. Safely resume interrupted training from the latest validated checkpoint
+.\train_pipeline.ps1 -Action resume
+# or CMD/Batch:
+train_pipeline.bat resume
+
+# 5. Delete raw PGN files ONLY after verified extraction and explicit confirmation
+.\train_pipeline.ps1 -Action cleanup -TargetFile "lichess_db_standard_rated_2014-02.pgn"
+# or CMD/Batch:
+train_pipeline.bat cleanup lichess_db_standard_rated_2014-02.pgn
+```
+
+#### Legacy Single-Dataset & Direct Commands
+```powershell
+# Inspect dataset statistics (counts, win/draw/loss distribution, size)
 .\train_pipeline.ps1 -Action stats
 # or CMD/Batch:
 train_pipeline.bat stats
 
-# 2. Integrate a new PGN dataset (append-only, deduplication, backup)
+# Integrate a new PGN dataset (append-only, deduplication, backup)
 .\train_pipeline.ps1 -Action integrate -InputPgn "data/raw/my_new_games.pgn" -MinElo 2000
 # or CMD/Batch:
 train_pipeline.bat integrate data\raw\my_new_games.pgn
 
-# 3. Export current evaluation parameters to a JSON checkpoint
+# Export current evaluation parameters to a JSON checkpoint
 .\train_pipeline.ps1 -Action export -OutputParams "data/params/baseline_params.json"
 # or CMD/Batch:
 train_pipeline.bat export data\params\baseline_params.json
 
-# 4. Run incremental Texel coordinate descent tuning initialized from existing weights
+# Run incremental Texel coordinate descent tuning initialized from existing weights
 .\train_pipeline.ps1 -Action tune -Iterations 5 -MaxTrainPositions 100000 -OutputParams "data/params/tuned_params_latest.json"
 # or CMD/Batch:
 train_pipeline.bat tune 5 100000
 
-# 5. Full end-to-end pipeline (integrate + tune)
+# Full end-to-end pipeline (integrate + tune)
 .\train_pipeline.ps1 -Action full -InputPgn "data/raw/my_new_games.pgn" -Iterations 5 -MaxTrainPositions 100000
 # or CMD/Batch:
 train_pipeline.bat full data\raw\my_new_games.pgn 5 100000

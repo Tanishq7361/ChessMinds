@@ -86,7 +86,7 @@ class Params:
         self.passed_base       = self._extract_scalar(src, r"int bonus = (\d+) \+ r \* 10", 15)
         self.protected_passer  = self._extract_scalar(src, r"mg_score \+= (\d+);\s*\n\s*eg_score \+= 25", 15)
         self.tarrasch_mg       = self._extract_scalar(src, r"mg_score \+= (\d+);\s*\n\s*eg_score \+= 25;\s*\n\s*\}\s*\n\s*if.*b_rooks_all", 15)
-        self.exchange_safety   = self._extract_scalar(src, r"mg_score -= (\d+).*// exchange safety", 20)
+        self.exchange_safety   = self._extract_scalar(src, r"mg_score -= pop_count\(w_threatened\) \* (\d+);", 20)
 
     def _extract_scalar(self, src, pattern, default):
         m = re.search(pattern, src)
@@ -174,6 +174,7 @@ class Params:
         v.append(self.passed_base)
         v.append(self.protected_passer)
         v.append(self.tarrasch_mg)
+        v.append(self.exchange_safety)
         return v
 
     def from_vector(self, v: list[int]):
@@ -203,6 +204,7 @@ class Params:
         self.passed_base      = v[idx]; idx += 1
         self.protected_passer = v[idx]; idx += 1
         self.tarrasch_mg      = v[idx]; idx += 1
+        self.exchange_safety  = v[idx]; idx += 1
 
 # ─── Python eval mirror ───────────────────────────────────────────────────────
 
@@ -288,6 +290,29 @@ def evaluate_python(board: chess.Board, p: Params) -> float:
         if not b_pf:
             mg_score -= p.rook_open_mg if not w_pf else p.rook_semiopen_mg
 
+    # Exchange safety: non-pawn pieces attacked by enemy pawns
+    w_pawns = int(w_pawns_bb)
+    b_pawns = int(b_pawns_bb)
+    w_pawn_attacks = ((w_pawns & ~chess.BB_FILE_A) << 7) | ((w_pawns & ~chess.BB_FILE_H) << 9)
+    b_pawn_attacks = ((b_pawns & ~chess.BB_FILE_H) >> 7) | ((b_pawns & ~chess.BB_FILE_A) >> 9)
+
+    w_mm = int(board.pieces(chess.KNIGHT, chess.WHITE) | board.pieces(chess.BISHOP, chess.WHITE) |
+               board.pieces(chess.ROOK, chess.WHITE) | board.pieces(chess.QUEEN, chess.WHITE))
+    b_mm = int(board.pieces(chess.KNIGHT, chess.BLACK) | board.pieces(chess.BISHOP, chess.BLACK) |
+               board.pieces(chess.ROOK, chess.BLACK) | board.pieces(chess.QUEEN, chess.BLACK))
+
+    w_threatened = w_mm & b_pawn_attacks
+    b_threatened = b_mm & w_pawn_attacks
+
+    if w_threatened:
+        cnt = bin(w_threatened).count("1")
+        mg_score -= cnt * p.exchange_safety
+        eg_score -= cnt * (p.exchange_safety * 3 // 4)
+    if b_threatened:
+        cnt = bin(b_threatened).count("1")
+        mg_score += cnt * p.exchange_safety
+        eg_score += cnt * (p.exchange_safety * 3 // 4)
+
     # Interpolate MG/EG
     phase = min(game_phase, TOTAL_PHASE)
     score = (mg_score * phase + eg_score * (TOTAL_PHASE - phase)) // TOTAL_PHASE
@@ -368,6 +393,12 @@ def write_params_to_cpp(p: Params):
     eg_str = " " + ", ".join(str(v) for v in p.eg_pv) + " "
     src = re.sub(r"(MG_PIECE_VALUES\[6\] = \{)[^}]+(\})", r"\g<1>" + mg_str + r"\g<2>", src)
     src = re.sub(r"(EG_PIECE_VALUES\[6\] = \{)[^}]+(\})", r"\g<1>" + eg_str + r"\g<2>", src)
+
+    # Scalar bonuses
+    src = re.sub(r"(mg_score -= pop_count\(w_threatened\) \* )\d+;", rf"\g<1>{p.exchange_safety};", src)
+    src = re.sub(r"(eg_score -= pop_count\(w_threatened\) \* )\d+;", rf"\g<1>{p.exchange_safety * 3 // 4};", src)
+    src = re.sub(r"(mg_score \+= pop_count\(b_threatened\) \* )\d+;", rf"\g<1>{p.exchange_safety};", src)
+    src = re.sub(r"(eg_score \+= pop_count\(b_threatened\) \* )\d+;", rf"\g<1>{p.exchange_safety * 3 // 4};", src)
 
     EVAL_CPP.write_text(src, encoding="utf-8")
     print(f"  Wrote tuned parameters to {EVAL_CPP}")

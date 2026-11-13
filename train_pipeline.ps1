@@ -1,23 +1,38 @@
 ﻿<#
 .SYNOPSIS
-    ChessMinds Incremental Training & Tuning Pipeline
+    ChessMinds Incremental Training, Queue & Sequential Batch Pipeline
 .DESCRIPTION
-    Automates dataset integration (append-only, deduplication) and Texel evaluation tuning.
+    Automates dataset integration, queue extraction, reproducible batch slicing (100K positions),
+    validation scoring, crash recovery, and Texel evaluation tuning.
     Never overwrites or deletes existing training data or tuned weights.
 
 .PARAMETER Action
     The action to perform:
-      - 'integrate' : Extract quiet positions from new PGN and append to dataset (with deduplication)
-      - 'stats'     : Show dataset position counts, win/draw/loss distribution, and size
-      - 'tune'      : Run Fast Texel coordinate descent tuning initialized from existing weights
-      - 'full'      : Run integrate followed by tune (end-to-end pipeline)
-      - 'export'    : Export current eval parameters from src/eval.cpp to a JSON file
+      - 'status'        : Display pending, processed, and validation counts, plus disk usage
+      - 'extract'       : Stream raw PGN games into pending training queue & validation dataset
+      - 'train-batches' : Train sequentially using 100,000-position batches with parameter continuity
+      - 'resume'        : Resume an interrupted batch training loop safely from the latest checkpoint
+      - 'cleanup'       : Delete a raw PGN file ONLY after verified extraction and explicit confirmation
+      - 'stats'         : Show legacy dataset position counts, win/draw/loss distribution, and size
+      - 'integrate'     : Extract quiet positions from new PGN and append to dataset (with deduplication)
+      - 'tune'          : Run single-run Fast Texel coordinate descent tuning
+      - 'full'          : Run integrate followed by tune (end-to-end pipeline)
+      - 'export'        : Export current eval parameters from src/eval.cpp to a JSON file
 
 .PARAMETER InputPgn
-    Path to new PGN file or directory containing PGN files (default: data/raw/lichess_db_standard_rated_2014-02.pgn)
+    Path to raw PGN file or directory containing PGN files (default: data/raw)
 
-.PARAMETER Dataset
-    Path to quiet positions dataset (default: data/positions/quiet_positions.txt)
+.PARAMETER BatchSize
+    Number of positions per training batch (default: 100,000)
+
+.PARAMETER MaxBatches
+    Max batches to run in this invocation (default: $null / run until queue empty)
+
+.PARAMETER Iterations
+    Number of coordinate descent iterations per batch/run (default: 3 for batches, 5 for tune)
+
+.PARAMETER StepSize
+    Adjustment step size in centipawns (default: 5)
 
 .PARAMETER MinElo
     Minimum Elo rating for both players (default: 2000; set 0 for no filter)
@@ -28,53 +43,39 @@
 .PARAMETER MaxNewPositions
     Max positions to extract from new PGN (default: 500,000)
 
-.PARAMETER MaxTrainPositions
-    Max positions to use during Texel tuning (default: 100,000)
+.PARAMETER Seed
+    Random seed for queue shuffling and reproducibility (default: 42)
 
-.PARAMETER Iterations
-    Number of coordinate descent iterations (default: 5)
+.PARAMETER TargetFile
+    Specific raw PGN filename to delete during 'cleanup' (e.g. lichess_db_standard_rated_2014-02.pgn)
 
-.PARAMETER StepSize
-    Adjustment step size in centipawns (default: 5)
-
-.PARAMETER ParamsFile
-    Optional JSON file to initialize tuning parameters from (default: current src/eval.cpp)
-
-.PARAMETER OutputParams
-    Path to save final tuned parameters JSON (default: data/params/tuned_params_latest.json)
+.PARAMETER Force
+    Bypass interactive confirmation during 'cleanup'
 
 .PARAMETER NoRebuild
     Skip rebuilding the C++ engine after tuning
-
-.EXAMPLE
-    # Show dataset statistics
-    .\train_pipeline.ps1 -Action stats
-
-    # Integrate a new PGN file (append-only, deduplicated)
-    .\train_pipeline.ps1 -Action integrate -InputPgn "data/raw/lichess_db_standard_rated_2014-02.pgn"
-
-    # Incremental tuning starting from current tuned engine parameters
-    .\train_pipeline.ps1 -Action tune -Iterations 5 -MaxTrainPositions 100000
-
-    # Full end-to-end pipeline
-    .\train_pipeline.ps1 -Action full -InputPgn "data/raw/lichess_db_standard_rated_2014-02.pgn" -Iterations 5
 #>
 
 [CmdletBinding()]
 param(
-    [ValidateSet("integrate", "stats", "tune", "full", "export")]
-    [string]$Action = "stats",
+    [ValidateSet("status", "extract", "train-batches", "resume", "cleanup", "stats", "integrate", "tune", "full", "export")]
+    [string]$Action = "status",
 
-    [string]$InputPgn = "data/raw/lichess_db_standard_rated_2014-02.pgn",
+    [string]$InputPgn = "data/raw",
     [string]$Dataset = "data/positions/quiet_positions.txt",
+    [int]$BatchSize = 100000,
+    [Nullable[int]]$MaxBatches = $null,
     [int]$MinElo = 2000,
     [int]$SkipOpening = 8,
     [int]$MaxNewPositions = 500000,
     [int]$MaxTrainPositions = 100000,
-    [int]$Iterations = 5,
+    [int]$Iterations = 3,
     [int]$StepSize = 5,
+    [int]$Seed = 42,
     [string]$ParamsFile = "",
     [string]$OutputParams = "data/params/tuned_params_latest.json",
+    [string]$TargetFile = "",
+    [switch]$Force,
     [switch]$NoRebuild
 )
 
@@ -83,11 +84,90 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "   ChessMinds Incremental Training & Tuning Pipeline" -ForegroundColor Cyan
+Write-Host "   ChessMinds Training, Queue & Sequential Batch Pipeline   " -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "  Action: $Action" -ForegroundColor Yellow
 Write-Host "  Date  : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
 Write-Host "============================================================" -ForegroundColor Cyan
+
+function Run-BatchStatus {
+    py tools/batch_pipeline.py status
+    if ($LASTEXITCODE -ne 0) { throw "Status command failed." }
+}
+
+function Run-BatchExtract {
+    Write-Host "`n>>> Extracting Raw PGN Files into Training Queue..." -ForegroundColor Green
+    $argsList = @(
+        "tools/batch_pipeline.py",
+        "extract",
+        "--input", $InputPgn,
+        "--min-elo", $MinElo,
+        "--skip-opening", $SkipOpening,
+        "--seed", $Seed
+    )
+    if ($PSBoundParameters.ContainsKey("MaxNewPositions")) {
+        $argsList += @("--max-positions", $MaxNewPositions)
+    }
+    py @argsList
+    if ($LASTEXITCODE -ne 0) { throw "PGN extraction to queue failed." }
+}
+
+function Run-BatchTraining {
+    Write-Host "`n>>> Running Sequential 100K-Position Batch Training..." -ForegroundColor Green
+    $argsList = @(
+        "tools/batch_pipeline.py",
+        "train-batches",
+        "--batch-size", $BatchSize,
+        "--iterations", $Iterations,
+        "--step", $StepSize
+    )
+    if ($MaxBatches -ne $null) {
+        $argsList += @("--max-batches", $MaxBatches)
+    }
+    if ($NoRebuild) {
+        $argsList += "--no-rebuild"
+    }
+    py @argsList
+    if ($LASTEXITCODE -ne 0) { throw "Batch training sequence failed." }
+}
+
+function Run-BatchResume {
+    Write-Host "`n>>> Resuming Interrupted Batch Training Pipeline..." -ForegroundColor Green
+    $argsList = @(
+        "tools/batch_pipeline.py",
+        "resume",
+        "--batch-size", $BatchSize,
+        "--iterations", $Iterations,
+        "--step", $StepSize
+    )
+    if ($MaxBatches -ne $null) {
+        $argsList += @("--max-batches", $MaxBatches)
+    }
+    if ($NoRebuild) {
+        $argsList += "--no-rebuild"
+    }
+    py @argsList
+    if ($LASTEXITCODE -ne 0) { throw "Resume batch training failed." }
+}
+
+function Run-BatchCleanup {
+    Write-Host "`n>>> Performing Verified Raw PGN File Cleanup..." -ForegroundColor Green
+    if ($TargetFile -eq "") {
+        throw "TargetFile parameter must be specified for cleanup (e.g. -TargetFile lichess_db_standard_rated_2014-02.pgn)"
+    }
+    $argsList = @(
+        "tools/batch_pipeline.py",
+        "cleanup",
+        "--target-file", $TargetFile
+    )
+    if ($Force) {
+        $argsList += "--force"
+    }
+    py @argsList
+    if ($LASTEXITCODE -ne 0) { throw "PGN cleanup failed or was cancelled." }
+}
+
+# ─── Legacy Actions (Preserved for Backward Compatibility) ────────────────────
 
 function Run-DatasetStats {
     Write-Host "`n>>> Running Dataset Statistics..." -ForegroundColor Green
@@ -97,11 +177,6 @@ function Run-DatasetStats {
 
 function Run-Integration {
     Write-Host "`n>>> Integrating New PGN Data (Append-Only, Deduplicated)..." -ForegroundColor Green
-    Write-Host "  Input PGN : $InputPgn"
-    Write-Host "  Dataset   : $Dataset"
-    Write-Host "  Min Elo   : $MinElo"
-    Write-Host "  Max Pos   : $MaxNewPositions"
-
     $argsList = @(
         "tools/pgn_integrate.py",
         "--input", $InputPgn,
@@ -128,12 +203,7 @@ function Run-Export {
 }
 
 function Run-Tuning {
-    Write-Host "`n>>> Running Texel Coordinate Descent Tuning..." -ForegroundColor Green
-    Write-Host "  Positions      : $Dataset"
-    Write-Host "  Max Train Pos  : $MaxTrainPositions"
-    Write-Host "  Iterations     : $Iterations"
-    Write-Host "  Step Size      : $StepSize cp"
-
+    Write-Host "`n>>> Running Single-Run Texel Coordinate Descent Tuning..." -ForegroundColor Green
     $argsList = @(
         "tools/texel_fast.py",
         "--positions", $Dataset,
@@ -153,19 +223,16 @@ function Run-Tuning {
 }
 
 switch ($Action) {
-    "stats" {
-        Run-DatasetStats
-    }
-    "integrate" {
-        Run-Integration
-    }
-    "export" {
-        Run-Export
-    }
-    "tune" {
-        Run-Tuning
-    }
-    "full" {
+    "status"        { Run-BatchStatus }
+    "extract"       { Run-BatchExtract }
+    "train-batches" { Run-BatchTraining }
+    "resume"        { Run-BatchResume }
+    "cleanup"       { Run-BatchCleanup }
+    "stats"         { Run-DatasetStats }
+    "integrate"     { Run-Integration }
+    "export"        { Run-Export }
+    "tune"          { Run-Tuning }
+    "full"          {
         Run-Integration
         Run-Tuning
     }
