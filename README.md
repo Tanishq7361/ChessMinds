@@ -223,7 +223,34 @@ python tools/benchmark.py --fens benchmarks/benchmark_suite.fen --movetime 500 -
 
 ---
 
-## 10. Offline Human-Game PGN Dataset
+## 10. Automated External Engine Tournament Framework (Phase 8)
+
+ChessMinds includes a dedicated automated tournament and strength evaluation framework (`tools/tournament.py`) capable of running head-to-head matches against any standard UCI engine (e.g. Stockfish, Berserk, Koivisto) or conducting SPRT testing between two versions of ChessMinds.
+
+### Key Capabilities:
+- **UCI Protocol Management**: Process management, options negotiation (`Hash`, `Threads`, `Skill Level`), error detection, and pipe cleanup.
+- **Fair Paired Matches**: Alternates colors for every opening from a diverse 16-opening test suite (`benchmarks/tournament_openings.json`).
+- **Full Output Logging**: Exports standard PGN files with opening names, FENs, and termination reasons, along with structured CSV and JSON reports.
+- **Statistical Rigor**: Computes maximum-likelihood Elo difference with a 95% Confidence Interval ($1.96 \times \text{SE}$) and color-specific performance breakdowns.
+- **Sequential Probability Ratio Test (SPRT)**: Early termination based on Log-Likelihood Ratio (LLR) boundaries for rapid hypothesis testing ($H_0$ vs $H_1$).
+- **Reproducibility**: Configurable random seeds for opening order and pairings.
+
+### Usage Commands:
+
+```powershell
+# 1. Run a 10-game match against Stockfish Skill Level 5 (100 ms/move):
+python tools/tournament.py --engine1 build/chessmind.exe --name1 "ChessMinds" --engine2 engines/stockfish.exe --name2 "Stockfish-L5" --skill2 5 --movetime 100 --games 10 --pgn matches_sf5.pgn --csv matches_sf5.csv --json matches_sf5.json
+
+# 2. Run a 50-game SPRT comparison between Release and candidate builds:
+python tools/tournament.py --engine1 build/chessmind.exe --name1 "ChessMinds-New" --engine2 build_prev/chessmind.exe --name2 "ChessMinds-Old" --depth 6 --games 50 --sprt --elo0 0 --elo1 35 --seed 42
+
+# 3. Run automated tournament unit tests:
+python -m unittest tests/test_tournament.py -v
+```
+
+---
+
+## 11. Offline Human-Game PGN Dataset
 
 The offline PGN pipeline streams one game at a time, checks headers first to skip games below the rating threshold, fully parses eligible games, and writes legal quiet human positions to a gzip-compressed CSV. A JSON sidecar reports accepted/rejected game counts, rejection reasons, results, and rating distribution; it distinguishes header-filtered games from games whose moves were validated. It uses only PGN moves and game results; it does not call the engine or use engine evaluations, books, or tablebases.
 
@@ -237,7 +264,7 @@ Quiet positions exclude positions where the side to move is in check and moves t
 
 ---
 
-## 11. UCI Protocol Reference
+## 12. UCI Protocol Reference
 
 | Command | Response | Description |
 |---|---|---|
@@ -253,6 +280,6 @@ Quiet positions exclude positions where the side to move is in check and moves t
 
 ---
 
-## 12. License
+## 13. License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
