@@ -65,28 +65,28 @@ ChessMinds implements the classical engine architecture combining **Way 3 (Alpha
 
 ---
 
-## 4. Building the Engine
+## 4. Building & Running Locally
 
-### Windows (PowerShell)
+### 4.1. Building the Engine from Source
 
+#### Windows (PowerShell / MinGW-w64 GCC & Ninja):
 ```powershell
-# 1. Configure build directory
-& "C:\Program Files\CMake\bin\cmake.exe" -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+# 1. Configure the build directory in Release mode (O3 + native vectorization)
+& "C:\Program Files\CMake\bin\cmake.exe" -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="C:/MinGW/mingw64/bin/g++.exe" -DCMAKE_MAKE_PROGRAM="C:/MinGW/mingw64/bin/ninja.exe"
 
-# 2. Build the engine and test suite
-& "C:\Program Files\CMake\bin\cmake.exe" --build build
+# 2. Compile the engine and test executables
+C:/MinGW/mingw64/bin/ninja.exe -C build
 
-# 3. Run Perft verification suite
+# 3. Verify core legality with Perft suite
 .\build\test_perft.exe
 ```
 
-### Linux / macOS (Terminal)
-
+#### Linux / macOS (GCC 11+ or Clang 13+):
 ```bash
-# 1. Configure build directory
+# 1. Configure build directory in Release mode
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-# 2. Build targets
+# 2. Build engine targets
 cmake --build build
 
 # 3. Run Perft verification suite
@@ -95,32 +95,79 @@ cmake --build build
 
 ---
 
-## 5. Web Frontend Interface (Interactive MVP)
+### 4.2. Running ChessMinds Locally via UCI (Command Line)
 
-ChessMinds includes a zero-dependency web interface with an interactive chessboard, real-time evaluation bar, engine telemetry (NPS, depth, nodes, PV), move navigation, and sound effects.
+You can launch and interact with ChessMinds directly via any terminal using standard UCI protocol commands:
 
-### Starting the Web Interface
-
-#### Quick Start:
-* **Windows**: Double-click `launch_gui.bat` or run:
+#### Start the Engine CLI:
+* **Windows**:
   ```powershell
-  python web/server.py
+  .\build\chessmind.exe
   ```
-* **Browser**: Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in any browser.
+* **Linux / macOS**:
+  ```bash
+  ./build/chessmind
+  ```
 
-The server automatically bridges HTTP requests to the compiled `chessmind.exe` engine via standard UCI commands over stdio pipes.
+#### Example Interactive UCI Session:
+```text
+uci
+isready
+ucinewgame
+position startpos moves e2e4 e7e5
+go movetime 1000
+```
+*(The engine outputs `info ...` search lines and responds with `bestmove g1f3`)*
+
+To quit the engine CLI:
+```text
+quit
+```
 
 ---
 
-## 6. GitHub Pages Deployment
+## 5. Web Frontend Interface (Running on Web & Locally)
 
-The repository includes `.github/workflows/deploy.yml`, which builds the web interface and deploys `dist/` whenever changes are pushed to `main`.
+ChessMinds includes a zero-dependency interactive web GUI featuring a responsive chessboard, live evaluation gauge, search telemetry (depth, seldepth, NPS, nodes, PV), move history with SAN notation, game status indicators, and piece movement sound effects.
 
-Before the first deployment, open the repository’s **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**. GitHub Pages serves the static interface at:
+### 5.1. Running the Full Engine Web Application Locally
 
-`https://tanishq7361.github.io/ChessMinds/`
+To play against the full C++ engine in your web browser with real-time AI move generation:
 
-GitHub Pages cannot run the local C++ engine or the Python API server, so engine analysis and move generation require running the project locally with `python web/server.py`.
+#### Step 1: Ensure the Engine is Built
+Make sure you have compiled `build/chessmind.exe` (or `build/chessmind` on Linux).
+
+#### Step 2: Start the Local Web Server Bridge
+* **Windows**: Double-click `launch_gui.bat` or run in PowerShell:
+  ```powershell
+  python web/server.py
+  ```
+* **Linux / macOS**:
+  ```bash
+  python3 web/server.py
+  ```
+
+#### Step 3: Open in Browser
+Visit the local server address:
+👉 **[http://localhost:8080](http://localhost:8080)** (or `http://127.0.0.1:8080`)
+
+The web server automatically communicates with `chessmind.exe` in the background over standard UCI pipes, processing move calculations, legal move validations, and board evaluations.
+
+---
+
+### 5.2. Running the Web Application Online (GitHub Pages)
+
+ChessMinds is deployed as a live static web application via GitHub Pages:
+
+👉 **Live Demo URL**: **[https://tanishq7361.github.io/ChessMinds/](https://tanishq7361.github.io/ChessMinds/)**
+
+#### How Deployment Works:
+* The repository includes an automated GitHub Actions workflow (`.github/workflows/deploy.yml`) that builds and publishes the web assets from `web/` to the `gh-pages` deployment branch on every push to `main`.
+* **Note on Cloud vs. Local Mode**: Because GitHub Pages hosts static web assets in the cloud and cannot directly execute local binary processes (`.exe`), the hosted web version provides the full UI, move history, PGN loading, and interactive board. For real-time C++20 engine AI move analysis, run the application locally with `python web/server.py`.
+
+---
+
+## 6. Testing, Verification & Game Simulations
 
 ---
 
