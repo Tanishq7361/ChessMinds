@@ -24,6 +24,7 @@ import time
 import random
 import argparse
 import shutil
+import json
 from pathlib import Path
 
 ROOT     = Path(__file__).resolve().parent.parent
@@ -92,6 +93,56 @@ class Params:
         if m:
             return int(m.group(1))
         return default
+
+    def to_dict(self) -> dict:
+        """Export all parameters to a serializable dictionary."""
+        return {
+            "mg_pv": list(self.mg_pv),
+            "eg_pv": list(self.eg_pv),
+            "mg_pawn": list(self.mg_pawn),
+            "eg_pawn": list(self.eg_pawn),
+            "mg_knight": list(self.mg_knight),
+            "eg_knight": list(self.eg_knight),
+            "mg_bishop": list(self.mg_bishop),
+            "eg_bishop": list(self.eg_bishop),
+            "mg_rook": list(self.mg_rook),
+            "eg_rook": list(self.eg_rook),
+            "mg_queen": list(self.mg_queen),
+            "eg_queen": list(self.eg_queen),
+            "mg_king": list(self.mg_king),
+            "eg_king": list(self.eg_king),
+            "bishop_pair_mg": self.bishop_pair_mg,
+            "bishop_pair_eg": self.bishop_pair_eg,
+            "doubled_pawn_mg": self.doubled_pawn_mg,
+            "isolated_pawn_mg": self.isolated_pawn_mg,
+            "rook_open_mg": self.rook_open_mg,
+            "rook_semiopen_mg": self.rook_semiopen_mg,
+            "phalanx_bonus": self.phalanx_bonus,
+            "passed_base": self.passed_base,
+            "protected_passer": self.protected_passer,
+            "tarrasch_mg": self.tarrasch_mg,
+            "exchange_safety": self.exchange_safety,
+        }
+
+    def from_dict(self, d: dict):
+        """Import parameters from dictionary, verifying expected fields."""
+        for k, v in d.items():
+            if hasattr(self, k):
+                setattr(self, k, list(v) if isinstance(v, list) else v)
+
+    def save_json(self, path: Path | str):
+        """Save parameters to a JSON file."""
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+    def load_json(self, path: Path | str):
+        """Load parameters from a JSON file."""
+        p = Path(path)
+        with open(p, "r", encoding="utf-8") as f:
+            d = json.load(f)
+        self.from_dict(d)
 
     # ── Flat vector interface ─────────────────────────────────────────────────
 
@@ -278,6 +329,8 @@ def load_data(path: str, max_count: int) -> tuple[list, list[float]]:
                 results.append(result)
             except Exception:
                 continue
+            if len(boards) % 50_000 == 0:
+                print(f"    Loaded {len(boards):,} positions...", end="\r", flush=True)
             if len(boards) >= max_count:
                 break
     return boards, results
@@ -323,29 +376,64 @@ def write_params_to_cpp(p: Params):
 
 def main():
     parser = argparse.ArgumentParser(description="ChessMinds Fast Texel Tuner")
-    parser.add_argument("--positions",     default="data/positions/quiet_positions.txt")
-    parser.add_argument("--max-positions", type=int, default=1_000_000)
-    parser.add_argument("--K",             type=float, default=1.13)
-    parser.add_argument("--iterations",    type=int, default=10)
-    parser.add_argument("--step",          type=int, default=5)
+    parser.add_argument("--positions",     default="data/positions/quiet_positions.txt",
+                        help="Path to training positions file (default: data/positions/quiet_positions.txt)")
+    parser.add_argument("--max-positions", type=int, default=1_000_000,
+                        help="Max positions to load for tuning (default: 1,000,000)")
+    parser.add_argument("--K",             type=float, default=1.13,
+                        help="Sigmoid scaling constant (default: 1.13)")
+    parser.add_argument("--iterations",    type=int, default=10,
+                        help="Number of coordinate descent iterations (default: 10)")
+    parser.add_argument("--step",          type=int, default=5,
+                        help="Parameter adjustment step size in centipawns (default: 5)")
+    parser.add_argument("--params-file",   default=None,
+                        help="Optional JSON file with initial parameters (default: read from current src/eval.cpp)")
+    parser.add_argument("--output-params", default=None,
+                        help="Optional JSON file to save final tuned parameters to")
+    parser.add_argument("--export-params", default=None,
+                        help="Export current parameters to JSON file and exit without training")
+    parser.add_argument("--no-rebuild",    action="store_true",
+                        help="Skip rebuilding the C++ engine after tuning")
     args = parser.parse_args()
+
+    # ── Export parameters mode ──────────────────────────────────────────────
+    if args.export_params:
+        p = Params()
+        if args.params_file:
+            pf = Path(args.params_file)
+            if not pf.is_absolute():
+                pf = ROOT / pf
+            p.load_json(pf)
+            print(f"Loaded parameters from {pf}")
+        out = Path(args.export_params)
+        if not out.is_absolute():
+            out = ROOT / out
+        p.save_json(out)
+        print(f"Exported parameters to {out}")
+        return
 
     pos_path = Path(args.positions)
     if not pos_path.is_absolute():
         pos_path = ROOT / pos_path
 
     if not pos_path.exists():
-        print(f"ERROR: {pos_path} not found. Run filter_pgn.py first.")
+        print(f"ERROR: {pos_path} not found. Run tools/pgn_integrate.py first.")
         sys.exit(1)
 
     print("=" * 70)
     print("  ChessMinds Fast Texel Tuner (Python eval mirror)")
     print("=" * 70)
-    print(f"  Positions : {pos_path}")
-    print(f"  Max pos   : {args.max_positions:,}")
-    print(f"  K         : {args.K}")
-    print(f"  Iterations: {args.iterations}")
-    print(f"  Step      : ±{args.step} cp")
+    print(f"  Positions   : {pos_path}")
+    print(f"  Max pos     : {args.max_positions:,}")
+    print(f"  K           : {args.K}")
+    print(f"  Iterations  : {args.iterations}")
+    print(f"  Step        : ±{args.step} cp")
+    if args.params_file:
+        print(f"  Init params : {args.params_file} (checkpoint resume)")
+    else:
+        print(f"  Init params : {EVAL_CPP} (current tuned engine weights)")
+    if args.output_params:
+        print(f"  Save params : {args.output_params}")
     print("=" * 70)
 
     shutil.copy(EVAL_CPP, BACKUP)
@@ -354,9 +442,21 @@ def main():
     print("  Loading positions...")
     t0 = time.time()
     boards, results = load_data(str(pos_path), args.max_positions)
-    print(f"  Loaded {len(boards):,} positions in {time.time()-t0:.1f}s")
+    print(f"\n  Loaded {len(boards):,} positions in {time.time()-t0:.1f}s")
 
     p = Params()
+    if args.params_file:
+        pf = Path(args.params_file)
+        if not pf.is_absolute():
+            pf = ROOT / pf
+        if not pf.exists():
+            print(f"ERROR: Parameters file not found: {pf}")
+            sys.exit(1)
+        p.load_json(pf)
+        print(f"  ✓ Initialized parameters from checkpoint: {pf}")
+    else:
+        print(f"  ✓ Initialized parameters from active engine source: {EVAL_CPP}")
+
     vec = p.to_vector()
     n_params = len(vec)
     print(f"  Tunable parameters: {n_params:,}")
@@ -419,23 +519,35 @@ def main():
         # Write checkpoint
         write_params_to_cpp(p)
         shutil.copy(EVAL_CPP, ROOT / "src" / f"eval.cpp.iter{iteration}")
+        if args.output_params:
+            iter_json = Path(args.output_params).with_suffix(f".iter{iteration}.json")
+            p.save_json(iter_json)
 
         if iter_improvements == 0:
             print("  Converged — stopping early.")
             break
 
-    # Final write & rebuild
+    # Final write & optional json save
     write_params_to_cpp(p)
+    if args.output_params:
+        out_path = Path(args.output_params)
+        if not out_path.is_absolute():
+            out_path = ROOT / out_path
+        p.save_json(out_path)
+        print(f"  ✓ Saved final tuned parameters to: {out_path}")
 
-    print("\n  Rebuilding engine with tuned parameters...")
-    result = __import__("subprocess").run(
-        ["ninja", "-C", str(BUILD_DIR), "chessmind"],
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        print("  ✓ Engine rebuilt successfully!")
+    if not args.no_rebuild:
+        print("\n  Rebuilding engine with tuned parameters...")
+        result = __import__("subprocess").run(
+            ["ninja", "-C", str(BUILD_DIR), "chessmind"],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            print("  ✓ Engine rebuilt successfully!")
+        else:
+            print("  ✗ Build failed:", result.stderr[-500:])
     else:
-        print("  ✗ Build failed:", result.stderr[-500:])
+        print("\n  Skipped engine rebuild (--no-rebuild)")
 
     print()
     print("=" * 70)

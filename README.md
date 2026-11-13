@@ -311,7 +311,65 @@ Quiet positions exclude positions where the side to move is in check and moves t
 
 ---
 
-## 12. UCI Protocol Reference
+## 12. Incremental PGN Integration & Texel Tuning Pipeline
+
+ChessMinds features an incremental training and evaluation tuning pipeline designed to incorporate new game datasets without losing prior positions or resetting previously tuned weights.
+
+### Key Guarantees
+- **Non-Destructive & Append-Only:** Previously collected positions are never deleted, overwritten, or reset.
+- **Canonical FEN Deduplication:** Transpositions with different halfmove or fullmove clocks are recognized as duplicates and skipped.
+- **Automated Backups:** A `.bak` copy of the dataset is created before any write operation.
+- **Idempotency:** Re-running the pipeline on an already integrated PGN extracts 0 new positions.
+- **Parameter Checkpoint & Resume:** Texel tuning initializes directly from current tuned engine weights (`src/eval.cpp`) or a JSON parameter checkpoint (`--params-file`), preventing loss of prior tuning progress.
+
+### Dataset Format
+Positions in `data/positions/quiet_positions.txt` are tab-separated:
+```
+<FEN>    <RESULT>
+```
+Where result is from White's perspective: `1.0` (White win), `0.5` (Draw), `0.0` (Black win).
+
+### Pipeline Commands (PowerShell & Batch)
+
+```powershell
+# 1. Inspect dataset statistics (counts, win/draw/loss distribution, size)
+.\train_pipeline.ps1 -Action stats
+# or CMD/Batch:
+train_pipeline.bat stats
+
+# 2. Integrate a new PGN dataset (append-only, deduplication, backup)
+.\train_pipeline.ps1 -Action integrate -InputPgn "data/raw/my_new_games.pgn" -MinElo 2000
+# or CMD/Batch:
+train_pipeline.bat integrate data\raw\my_new_games.pgn
+
+# 3. Export current evaluation parameters to a JSON checkpoint
+.\train_pipeline.ps1 -Action export -OutputParams "data/params/baseline_params.json"
+# or CMD/Batch:
+train_pipeline.bat export data\params\baseline_params.json
+
+# 4. Run incremental Texel coordinate descent tuning initialized from existing weights
+.\train_pipeline.ps1 -Action tune -Iterations 5 -MaxTrainPositions 100000 -OutputParams "data/params/tuned_params_latest.json"
+# or CMD/Batch:
+train_pipeline.bat tune 5 100000
+
+# 5. Full end-to-end pipeline (integrate + tune)
+.\train_pipeline.ps1 -Action full -InputPgn "data/raw/my_new_games.pgn" -Iterations 5 -MaxTrainPositions 100000
+# or CMD/Batch:
+train_pipeline.bat full data\raw\my_new_games.pgn 5 100000
+```
+
+### Direct Tool Usage
+```powershell
+# Standalone PGN integration
+py tools/pgn_integrate.py --input "data/raw/lichess_db_standard_rated_2014-02.pgn" --dataset "data/positions/quiet_positions.txt" --min-elo 2000
+
+# Standalone Texel tuning with resume
+py tools/texel_fast.py --positions "data/positions/quiet_positions.txt" --params-file "data/params/baseline_params.json" --output-params "data/params/tuned_params_latest.json" --iterations 5 --step 5
+```
+
+---
+
+## 13. UCI Protocol Reference
 
 | Command | Response | Description |
 |---|---|---|
@@ -327,6 +385,6 @@ Quiet positions exclude positions where the side to move is in check and moves t
 
 ---
 
-## 13. License
+## 14. License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
